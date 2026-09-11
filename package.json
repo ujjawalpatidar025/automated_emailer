@@ -1,0 +1,15 @@
+{
+  "name": "automator-email",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-user email-campaign automator — register with your own Gmail App Password, create a campaign, attach a resume, upload a CSV of recipients, and send in controlled, schedulable batches. MongoDB-backed, per-user isolated.",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
