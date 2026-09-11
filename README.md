@@ -98,6 +98,31 @@ to try a campaign out. The sun/moon button toggles light/dark; both are tuned
 for a professional look and pass through every shadcn component automatically
 (`client/src/index.css`).
 
+## 5. Deploying
+
+Client and server deploy as two separate services (e.g. client on
+Vercel/Netlify, server on Render/Railway) — they end up on different domains,
+which two things depend on:
+
+- **Client → server URL**: in dev the client talks to `/api` and rides
+  Vite's proxy (`vite.config.js`) to `localhost:5000`. There's no proxy in a
+  production build, so `client/.env.production` sets
+  `VITE_API_URL=https://your-backend.example.com/api`, which Vite bakes into
+  the build (`import.meta.env.VITE_API_URL` in `client/src/lib/api.js`) —
+  update that file's URL when your backend's URL changes, then rebuild.
+- **Cross-site cookies**: the session cookie is `httpOnly` and, once
+  `NODE_ENV=production`, switches to `SameSite=None; Secure` (both required
+  for a browser to send it on a cross-origin `fetch`/`EventSource` at all —
+  see `cookieOptions()` in `authController.js`). This needs HTTPS on both
+  sides, which Render/Vercel/Netlify give you by default.
+
+Server environment variables to set on your host: `MONGO_URI`, `JWT_SECRET`,
+`CREDENTIAL_ENCRYPTION_KEY`, `CLIENT_URL` (your deployed frontend's exact
+origin — the backend's CORS is locked to just this one), `NODE_ENV=production`.
+Don't set `PORT` — the platform injects it and `server/src/index.js` already
+reads `process.env.PORT`. Also add the platform's outbound IPs (or `0.0.0.0/0`
+for simplicity) to your MongoDB Atlas cluster's Network Access list.
+
 ---
 
 ## How it sends — and how to stay out of spam

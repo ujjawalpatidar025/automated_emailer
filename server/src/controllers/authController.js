@@ -8,10 +8,17 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COOKIE_NAME = "token";
 
 function cookieOptions() {
+  // Locally the client hits the API through Vite's proxy, so it's same-site
+  // and plain HTTP — Lax + non-Secure works. Deployed, the client and API
+  // are on different domains, so the cookie is cross-site: browsers refuse
+  // to send a cross-site cookie on fetch/XHR at all unless it's
+  // `SameSite=None`, and `SameSite=None` is only honoured over HTTPS
+  // (`Secure`). Render/most hosts terminate TLS for you, so this is safe.
+  const isProd = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProd ? "none" : "lax",
+    secure: isProd,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   };
 }

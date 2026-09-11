@@ -1,4 +1,8 @@
-const BASE = "/api";
+// In dev this stays "/api" and rides Vite's proxy (see vite.config.js) to
+// localhost:5000. In production there's no proxy, so the built app needs the
+// deployed backend's real URL — set via VITE_API_URL at build time
+// (client/.env.production).
+const BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
 
 async function handle(res) {
   const data = await res.json().catch(() => ({}));
