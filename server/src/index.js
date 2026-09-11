@@ -16,9 +16,12 @@ import { startHeartbeat } from "./heartbeat.js";
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trim a trailing slash — CORS origin matching is exact, and it's an easy
+// way to paste CLIENT_URL wrong and get this same error again.
+const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/+$/, "");
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: clientUrl,
     credentials: true,
   })
 );
