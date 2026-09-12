@@ -95,6 +95,7 @@ export default function App() {
   }
 
   async function handleLogout() {
+    if (!confirm("Log out of Automator Email?")) return;
     await logout();
     toast.success("Logged out");
   }
