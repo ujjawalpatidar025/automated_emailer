@@ -15,6 +15,12 @@ function getTransport(gmailAddress, appPassword) {
     auth: { user: gmailAddress, pass: appPassword },
     pool: true,
     maxConnections: 1,
+    // Nodemailer's defaults (2 min connection, 10 min socket) mean a bad
+    // password or a blocked outbound port (some hosts block SMTP entirely —
+    // see README) leaves the UI hanging with no feedback for ages. Fail fast.
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 20_000,
   });
   transportCache.set(gmailAddress, { transport, appPassword });
   return transport;
