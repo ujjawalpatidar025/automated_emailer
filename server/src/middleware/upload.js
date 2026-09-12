@@ -1,10 +1,23 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import multer from "multer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const UPLOAD_DIR = path.resolve(__dirname, "../../uploads");
+
+// Vercel's filesystem is read-only outside of /tmp — trying to mkdir under
+// the deployed bundle throws at import time and takes down every route, not
+// just uploads. Use the OS temp dir there instead.
+//
+// Note this only really works on a normal long-running process (local dev,
+// Fly.io, Render): on Vercel, /tmp is ephemeral *per invocation*, so a resume
+// uploaded while creating a campaign may not exist by the time a later
+// "send" request (quite possibly a different, freshly cold-started instance)
+// tries to attach it. See README's "Deploying" section.
+export const UPLOAD_DIR = process.env.VERCEL
+  ? path.join(os.tmpdir(), "automator-email-uploads")
+  : path.resolve(__dirname, "../../uploads");
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 

@@ -123,6 +123,57 @@ Don't set `PORT` — the platform injects it and `server/src/index.js` already
 reads `process.env.PORT`. Also add the platform's outbound IPs (or `0.0.0.0/0`
 for simplicity) to your MongoDB Atlas cluster's Network Access list.
 
+### Where to host the backend
+
+This matters more than it looks like, because sending mail goes over raw
+SMTP (`smtp.gmail.com:465`), not HTTPS:
+
+- **Render's free tier blocks all outbound SMTP** (ports 25/465/587) as of
+  Sept 2025 — every registration and send just hangs until it times out,
+  then fails. A paid Render instance lifts that (port 25 stays blocked
+  everywhere, 465/587 don't). ([Render changelog](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports))
+- **Fly.io, Railway, a VPS** — traditional always-on Node hosting, same
+  model as Render, ports open. This repo runs on these with zero changes:
+  `server/Dockerfile` is set up for Fly.io specifically (`fly launch` from
+  inside `server/`, then `fly deploy`).
+- **Vercel** technically allows outbound 465/587 on its Node functions, but
+  this backend is built around one long-running process — see below.
+
+### Running the backend on Vercel
+
+`server/vercel.json` + `server/api/index.js` route every request through one
+serverless function (`server/src/app.js`, the same Express app the normal
+entry point at `server/src/index.js` uses — that file is *not* used on
+Vercel, since a serverless function must never call `app.listen()`).
+
+Set the same env vars as above directly in the Vercel project's dashboard.
+**`JWT_SECRET` and `CREDENTIAL_ENCRYPTION_KEY` must be set explicitly here** —
+`api/index.js` deliberately refuses to start (a clear 500, not a guess) if
+they're missing, rather than falling back to the normal entry point's
+"auto-generate and save to `.env`" behaviour, which would silently mint a
+*different* secret on every cold start (no writable disk to save it to) and
+randomly invalidate sessions and undecryptable stored Gmail passwords.
+
+Three real gaps from running here instead of a long-running host, not config
+issues you can tune away:
+
+- **Scheduled (cron) campaigns never fire.** The scheduler needs a process
+  that's always running; a serverless function only exists for the duration
+  of a request. Manual sending and "Send to specific people" still work fine
+  — each is one request, fully awaited before responding.
+- **Live SSE tracking won't show updates.** `EventSource` expects the
+  connection to stay open indefinitely; Vercel's function timeout
+  (`maxDuration`, set to 60s in `vercel.json`) cuts it off. The app still
+  works — you just won't see the live "sending now" panel update.
+- **Resume attachments are unreliable.** Uploaded files land in `/tmp`
+  (Vercel's filesystem is read-only elsewhere), which is wiped between
+  invocations and isn't shared across instances — a resume uploaded while
+  creating a campaign may be gone by the time a later "send" request (quite
+  possibly a different cold-started instance) tries to attach it.
+
+If you need scheduling, live tracking, and reliable attachments, use one of
+the always-on hosts above instead.
+
 ---
 
 ## How it sends — and how to stay out of spam
