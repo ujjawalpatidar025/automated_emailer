@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
 import multer from "multer";
 import authRoutes from "./routes/authRoutes.js";
 import campaignRoutes from "./routes/campaignRoutes.js";
@@ -11,13 +10,10 @@ const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\
 
 const app = express();
 
-app.use(
-  cors({
-    origin: clientUrl,
-    credentials: true,
-  })
-);
-app.use(cookieParser());
+// Auth is a Bearer token in the Authorization header now, not a cookie, so
+// `credentials`/cookie-parser aren't needed — cors() already reflects
+// whatever headers a preflight asks for (Authorization included).
+app.use(cors({ origin: clientUrl }));
 app.use(express.json());
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));

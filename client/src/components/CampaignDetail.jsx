@@ -136,7 +136,7 @@ export default function CampaignDetail({
   // Realtime tracking: subscribe to this campaign's send events, regardless
   // of whether the batch was started from this tab, a schedule, or retry.
   useEffect(() => {
-    const es = new EventSource(api.streamUrl(campaignId), { withCredentials: true });
+    const es = new EventSource(api.streamUrl(campaignId));
 
     es.addEventListener("snapshot", (e) => {
       const data = JSON.parse(e.data);

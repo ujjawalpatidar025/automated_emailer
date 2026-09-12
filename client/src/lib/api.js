@@ -1,8 +1,31 @@
 // In dev this stays "/api" and rides Vite's proxy (see vite.config.js) to
-// localhost:5000. In production there's no proxy, so the built app needs the
-// deployed backend's real URL — set via VITE_API_URL at build time
-// (client/.env.production).
+// localhost:5000. In production, set VITE_API_URL to the deployed backend's
+// URL (client/.env.production) — Vite bakes it into the build.
 const BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
+
+const TOKEN_KEY = "automator_token";
+
+// Auth is a Bearer token the client holds onto and attaches itself, not a
+// cookie — frontend and backend are commonly on two unrelated origins (e.g.
+// different vercel.app subdomains), and browsers block a cross-site cookie
+// as third-party regardless of correct CORS/SameSite/Secure config. A token
+// sent explicitly in a header doesn't run into that at all.
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* localStorage unavailable (private mode, etc.) — nothing to do */
+  }
+}
 
 async function handle(res) {
   const data = await res.json().catch(() => ({}));
@@ -10,95 +33,96 @@ async function handle(res) {
   return data;
 }
 
+function authHeaders(extra) {
+  const token = getToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+}
+
+function request(path, opts = {}) {
+  return fetch(`${BASE}${path}`, {
+    ...opts,
+    headers: authHeaders(opts.headers),
+  }).then(handle);
+}
+
 const jsonHeaders = { "Content-Type": "application/json" };
 
 export const api = {
   // ── Auth ──────────────────────────────────────────────────────────
   register: (payload) =>
-    fetch(`${BASE}/auth/register`, {
+    request("/auth/register", {
       method: "POST",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
-    }).then(handle),
+    }),
 
   login: (payload) =>
-    fetch(`${BASE}/auth/login`, {
+    request("/auth/login", {
       method: "POST",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify(payload),
-    }).then(handle),
+    }),
 
-  logout: () =>
-    fetch(`${BASE}/auth/logout`, { method: "POST", credentials: "include" }).then(handle),
+  logout: () => request("/auth/logout", { method: "POST" }),
 
-  me: () => fetch(`${BASE}/auth/me`, { credentials: "include" }).then(handle),
+  me: () => request("/auth/me"),
 
   updateMe: (patch) =>
-    fetch(`${BASE}/auth/me`, {
+    request("/auth/me", {
       method: "PATCH",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify(patch),
-    }).then(handle),
+    }),
 
-  mailerHealth: () =>
-    fetch(`${BASE}/auth/mailer-health`, { credentials: "include" }).then(handle),
+  mailerHealth: () => request("/auth/mailer-health"),
 
   // ── Campaigns ─────────────────────────────────────────────────────
-  listCampaigns: () => fetch(`${BASE}/campaigns`, { credentials: "include" }).then(handle),
+  listCampaigns: () => request("/campaigns"),
 
-  getCampaign: (id) =>
-    fetch(`${BASE}/campaigns/${id}`, { credentials: "include" }).then(handle),
+  getCampaign: (id) => request(`/campaigns/${id}`),
 
   createCampaign: (formData) =>
-    fetch(`${BASE}/campaigns`, {
-      method: "POST",
-      credentials: "include",
-      body: formData,
-    }).then(handle),
+    request("/campaigns", { method: "POST", body: formData }),
 
   updateCampaign: (id, patch) =>
-    fetch(`${BASE}/campaigns/${id}`, {
+    request(`/campaigns/${id}`, {
       method: "PATCH",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify(patch),
-    }).then(handle),
+    }),
 
-  deleteCampaign: (id) =>
-    fetch(`${BASE}/campaigns/${id}`, { method: "DELETE", credentials: "include" }).then(handle),
+  deleteCampaign: (id) => request(`/campaigns/${id}`, { method: "DELETE" }),
 
   sendBatch: (id, count) =>
-    fetch(`${BASE}/campaigns/${id}/send`, {
+    request(`/campaigns/${id}/send`, {
       method: "POST",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify({ count }),
-    }).then(handle),
+    }),
 
   sendSelected: (id, emails) =>
-    fetch(`${BASE}/campaigns/${id}/send-selected`, {
+    request(`/campaigns/${id}/send-selected`, {
       method: "POST",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify({ emails }),
-    }).then(handle),
+    }),
 
   retryFailed: (id, opts = {}) =>
-    fetch(`${BASE}/campaigns/${id}/retry-failed`, {
+    request(`/campaigns/${id}/retry-failed`, {
       method: "POST",
-      credentials: "include",
       headers: jsonHeaders,
       body: JSON.stringify(opts),
-    }).then(handle),
+    }),
 
-  getCampaignAnalytics: (id) =>
-    fetch(`${BASE}/campaigns/${id}/analytics`, { credentials: "include" }).then(handle),
+  getCampaignAnalytics: (id) => request(`/campaigns/${id}/analytics`),
 
-  getGlobalAnalytics: () =>
-    fetch(`${BASE}/analytics`, { credentials: "include" }).then(handle),
+  getGlobalAnalytics: () => request("/analytics"),
 
-  streamUrl: (id) => `${BASE}/campaigns/${id}/stream`,
+  // EventSource can't set custom headers, so the token rides along as a
+  // query param for this one request type only — requireAuth() on the
+  // server accepts either the header or ?token=.
+  streamUrl: (id) => {
+    const token = getToken();
+    return `${BASE}/campaigns/${id}/stream${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  },
 };

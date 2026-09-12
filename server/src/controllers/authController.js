@@ -5,26 +5,16 @@ import { signToken } from "../utils/jwt.js";
 import { verifyMailerFor } from "../services/mailer.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const COOKIE_NAME = "token";
 
-function cookieOptions() {
-  // Locally the client hits the API through Vite's proxy, so it's same-site
-  // and plain HTTP — Lax + non-Secure works. Deployed, the client and API
-  // are on different domains, so the cookie is cross-site: browsers refuse
-  // to send a cross-site cookie on fetch/XHR at all unless it's
-  // `SameSite=None`, and `SameSite=None` is only honoured over HTTPS
-  // (`Secure`). Render/most hosts terminate TLS for you, so this is safe.
-  const isProd = process.env.NODE_ENV === "production";
-  return {
-    httpOnly: true,
-    sameSite: isProd ? "none" : "lax",
-    secure: isProd,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-  };
-}
-
-function setAuthCookie(res, userId) {
-  res.cookie(COOKIE_NAME, signToken({ sub: String(userId) }), cookieOptions());
+// Bearer token in the response body, not a cookie: the client (frontend
+// and backend on unrelated origins, e.g. two different vercel.app
+// subdomains) stores this itself and sends it back as
+// `Authorization: Bearer <token>` on every request. This sidesteps the
+// third-party-cookie blocking that a cross-site cookie runs into — that
+// blocking applies regardless of correct CORS/SameSite/Secure config, since
+// it's a browser privacy feature, not a config negotiation.
+function issueToken(userId) {
+  return signToken({ sub: String(userId) });
 }
 
 const clean = (s) => (typeof s === "string" ? s.trim() : "");
@@ -75,8 +65,7 @@ export async function register(req, res) {
     gmailAppPasswordEnc: encryptSecret(gmailAppPassword),
   });
 
-  setAuthCookie(res, user._id);
-  res.status(201).json({ user });
+  res.status(201).json({ user, token: issueToken(user._id) });
 }
 
 // POST /api/auth/login
@@ -93,14 +82,14 @@ export async function login(req, res) {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Invalid email or password" });
 
-  setAuthCookie(res, user._id);
   user.passwordHash = undefined;
-  res.json({ user });
+  res.json({ user, token: issueToken(user._id) });
 }
 
 // POST /api/auth/logout
+// Nothing to do server-side for a stateless JWT — the client just discards
+// its stored token. Kept as a route so the client has one consistent call.
 export function logout(_req, res) {
-  res.clearCookie(COOKIE_NAME, { ...cookieOptions(), maxAge: undefined });
   res.json({ ok: true });
 }
 

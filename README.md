@@ -104,33 +104,31 @@ Client and server deploy as two separate services (e.g. client on
 Vercel/Netlify, server on Render/Railway/Fly.io) — they end up on different
 domains, which two things depend on:
 
-- **Cross-site cookies get blocked, not just misconfigured.** The session
-  cookie is `httpOnly` and, in production, uses `SameSite=None; Secure` (see
-  `cookieOptions()` in `authController.js`) — correct, but not sufficient on
-  its own. If the frontend and backend are two different subdomains of a
-  *shared public suffix* (e.g. `your-app.vercel.app` and
+- **Auth is a Bearer token, not a cookie — on purpose.** An earlier version
+  of this app used an `httpOnly` session cookie with `SameSite=None; Secure`,
+  which is the textbook-correct config for a cross-origin cookie — and it
+  still didn't work. If the frontend and backend are two different
+  subdomains of a *shared public suffix* (e.g. `your-app.vercel.app` and
   `your-api.vercel.app` — both are subdomains of `vercel.app`, which is on
-  the public suffix list, so they're different **sites** to the browser, not
-  a first-party relationship), browsers treat the cookie as third-party and
-  can silently refuse to store or send it — happened to this exact repo, on
-  two `vercel.app` subdomains, despite CORS and `SameSite`/`Secure` all being
-  correct. It looks like a login that "doesn't stick": register/login
-  succeeds, the very next request is unauthenticated, a full page reload
-  drops you back to the login screen.
+  the public suffix list), browsers treat them as different **sites**, not a
+  first-party relationship, and silently block the cookie as third-party —
+  no error, no console warning, correct CORS and all. It looks exactly like
+  a login that "doesn't stick": register/login succeeds, the very next
+  request is unauthenticated, a full page reload drops you back to the
+  login screen.
 
-  The fix here (`client/vercel.json`) has the frontend's own Vercel
-  deployment **proxy** `/api/*` to the backend server-side (a `rewrites`
-  rule), so the browser only ever talks to its own origin — the backend
-  response (cookie included) comes back looking first-party. `client/src/lib/api.js`
-  calls a plain relative `/api`; `client/.env.production` leaves
-  `VITE_API_URL` unset so that's what it uses. Only set `VITE_API_URL` to an
-  absolute backend URL if you're hosting the frontend somewhere that can't
-  do this kind of server-side proxying, or if frontend/backend really are
-  subdomains of one domain you own (then it's genuinely same-site and a
-  direct cross-origin call is fine).
-
-  A `vercel.json` rewrite is Vercel-specific; other static-hosts have their
-  own equivalent (Netlify: `_redirects`/`netlify.toml` proxy redirects).
+  So instead: `POST /auth/register` and `/auth/login` return the JWT
+  directly in the response body (`{ user, token }`). The client stores it
+  (`localStorage`, see `getToken`/`setToken` in `client/src/lib/api.js`) and
+  attaches it itself as `Authorization: Bearer <token>` on every request —
+  an explicit header isn't subject to third-party-cookie policy at all,
+  since it isn't a cookie. `EventSource` can't set custom headers, so the one
+  exception is the SSE stream URL, which carries the token as a `?token=`
+  query param instead (`requireAuth` in `server/src/middleware/auth.js`
+  accepts either). The tradeoff versus an `httpOnly` cookie: a token in
+  `localStorage` is readable by any script on the page, so it's more exposed
+  to XSS — reasonable for this app, but worth knowing if you're adapting the
+  pattern elsewhere.
 
 Server environment variables to set on your host: `MONGO_URI`, `JWT_SECRET`,
 `CREDENTIAL_ENCRYPTION_KEY`, `CLIENT_URL` (your deployed frontend's exact
@@ -238,14 +236,15 @@ Sources:
 ## API
 
 All `/api/campaigns*` and `/api/analytics` routes require an authenticated
-session (`requireAuth` — a JWT in an httpOnly cookie) and are always scoped to
+request (`requireAuth` — a JWT sent as `Authorization: Bearer <token>`, or
+`?token=` for the one SSE route that needs it) and are always scoped to
 `req.userId`; one user can never see or touch another's data.
 
 | Method & path | Purpose |
 | --- | --- |
-| `POST /api/auth/register` | name, email, password, `gmailAddress`, `gmailSenderName`, `gmailAppPassword` — verifies the Gmail credentials before creating the account |
-| `POST /api/auth/login` | email + password → sets the session cookie |
-| `POST /api/auth/logout` | clears the session cookie |
+| `POST /api/auth/register` | name, email, password, `gmailAddress`, `gmailSenderName`, `gmailAppPassword` — verifies the Gmail credentials before creating the account, returns `{ user, token }` |
+| `POST /api/auth/login` | email + password → `{ user, token }` |
+| `POST /api/auth/logout` | no-op server-side (stateless JWT) — the client just discards its stored token |
 | `GET /api/auth/me` | the current user |
 | `PATCH /api/auth/me` | update name / Gmail address / sender name / rotate the App Password (re-verified) |
 | `GET /api/auth/mailer-health` | checks the current user's stored Gmail credentials |
@@ -367,14 +366,18 @@ name/company, use a fallback so the copy still reads naturally:
 
 ## Security & multi-user notes
 
-- **Auth**: bcrypt-hashed passwords, JWT in an **httpOnly** cookie (not
-  readable from JS), 30-day expiry.
+- **Auth**: bcrypt-hashed passwords, a JWT (30-day expiry) the client stores
+  and sends as `Authorization: Bearer <token>` on every request — not a
+  cookie, deliberately (see "Deploying" above for why).
 - **Gmail App Passwords** are encrypted at rest with AES-256-GCM
   (`CREDENTIAL_ENCRYPTION_KEY`) and never returned by any API response.
 - **Isolation**: every campaign query is filtered by `user: req.userId` at the
   database level — a wrong/other user's campaign ID simply 404s.
-- Logout clears the cookie but, like any stateless JWT, an already-issued
-  token stays valid until it expires — there's no server-side revocation list.
+- Logout just tells the client to discard its token — like any stateless JWT,
+  an already-issued token stays valid until it expires; there's no
+  server-side revocation list. A token in `localStorage` is also readable by
+  any script running on the page, so it's more exposed to XSS than an
+  httpOnly cookie would be — a deliberate tradeoff, see "Deploying" above.
   Fine for a small internal tool; add one if that matters for your use case.
 
 ## Notes & limitations
