@@ -101,20 +101,36 @@ for a professional look and pass through every shadcn component automatically
 ## 5. Deploying
 
 Client and server deploy as two separate services (e.g. client on
-Vercel/Netlify, server on Render/Railway) — they end up on different domains,
-which two things depend on:
+Vercel/Netlify, server on Render/Railway/Fly.io) — they end up on different
+domains, which two things depend on:
 
-- **Client → server URL**: in dev the client talks to `/api` and rides
-  Vite's proxy (`vite.config.js`) to `localhost:5000`. There's no proxy in a
-  production build, so `client/.env.production` sets
-  `VITE_API_URL=https://your-backend.example.com/api`, which Vite bakes into
-  the build (`import.meta.env.VITE_API_URL` in `client/src/lib/api.js`) —
-  update that file's URL when your backend's URL changes, then rebuild.
-- **Cross-site cookies**: the session cookie is `httpOnly` and, once
-  `NODE_ENV=production`, switches to `SameSite=None; Secure` (both required
-  for a browser to send it on a cross-origin `fetch`/`EventSource` at all —
-  see `cookieOptions()` in `authController.js`). This needs HTTPS on both
-  sides, which Render/Vercel/Netlify give you by default.
+- **Cross-site cookies get blocked, not just misconfigured.** The session
+  cookie is `httpOnly` and, in production, uses `SameSite=None; Secure` (see
+  `cookieOptions()` in `authController.js`) — correct, but not sufficient on
+  its own. If the frontend and backend are two different subdomains of a
+  *shared public suffix* (e.g. `your-app.vercel.app` and
+  `your-api.vercel.app` — both are subdomains of `vercel.app`, which is on
+  the public suffix list, so they're different **sites** to the browser, not
+  a first-party relationship), browsers treat the cookie as third-party and
+  can silently refuse to store or send it — happened to this exact repo, on
+  two `vercel.app` subdomains, despite CORS and `SameSite`/`Secure` all being
+  correct. It looks like a login that "doesn't stick": register/login
+  succeeds, the very next request is unauthenticated, a full page reload
+  drops you back to the login screen.
+
+  The fix here (`client/vercel.json`) has the frontend's own Vercel
+  deployment **proxy** `/api/*` to the backend server-side (a `rewrites`
+  rule), so the browser only ever talks to its own origin — the backend
+  response (cookie included) comes back looking first-party. `client/src/lib/api.js`
+  calls a plain relative `/api`; `client/.env.production` leaves
+  `VITE_API_URL` unset so that's what it uses. Only set `VITE_API_URL` to an
+  absolute backend URL if you're hosting the frontend somewhere that can't
+  do this kind of server-side proxying, or if frontend/backend really are
+  subdomains of one domain you own (then it's genuinely same-site and a
+  direct cross-origin call is fine).
+
+  A `vercel.json` rewrite is Vercel-specific; other static-hosts have their
+  own equivalent (Netlify: `_redirects`/`netlify.toml` proxy redirects).
 
 Server environment variables to set on your host: `MONGO_URI`, `JWT_SECRET`,
 `CREDENTIAL_ENCRYPTION_KEY`, `CLIENT_URL` (your deployed frontend's exact

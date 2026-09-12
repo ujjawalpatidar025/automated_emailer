@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://automated-emailer-backend.vercel.app/api/:path*"
+    }
+  ]
+}
