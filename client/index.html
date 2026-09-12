@@ -12,12 +12,10 @@
     />
     <script>
       // Apply the saved theme before React mounts to avoid a flash.
+      // Defaults to light regardless of OS preference — only an explicit
+      // toggle (saved to localStorage) switches it to dark.
       try {
-        var t = localStorage.getItem("automator-theme");
-        if (
-          t === "dark" ||
-          (!t && window.matchMedia("(prefers-color-scheme: dark)").matches)
-        ) {
+        if (localStorage.getItem("automator-theme") === "dark") {
           document.documentElement.classList.add("dark");
         }
       } catch (e) {}

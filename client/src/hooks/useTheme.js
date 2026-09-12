@@ -9,10 +9,9 @@ function getInitial() {
   } catch {
     /* localStorage unavailable */
   }
-  const prefersDark =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-  return prefersDark ? "dark" : "light";
+  // Default to light regardless of OS preference — only an explicit choice
+  // (stored above once toggled) switches it to dark.
+  return "light";
 }
 
 export function useTheme() {
