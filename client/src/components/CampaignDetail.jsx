@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   XCircle,
   Users,
+  Pause,
+  Play,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +61,14 @@ function describePick(c) {
   if (c.pickFrom === "offset")
     return `Next batch skips the first ${c.pickOffset || 0} row(s) of the sheet, then picks in order.`;
   return "Next batch picks from the start of the sheet, in order.";
+}
+
+// A schedule with non-default time/count was deliberately set up at some
+// point, even if it's currently off — worth surfacing as "paused" rather
+// than just looking like it was never configured.
+function wasEverConfigured(schedule) {
+  if (!schedule) return false;
+  return schedule.time !== "09:00" || schedule.count !== 50 || !!schedule.lastRunAt;
 }
 
 function describeSchedule(c) {
@@ -243,6 +253,27 @@ export default function CampaignDetail({
       toast.error(err.message);
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function handleToggleSchedule(enabled) {
+    try {
+      await api.updateCampaign(campaignId, {
+        schedule: {
+          enabled,
+          time: campaign.schedule?.time,
+          count: campaign.schedule?.count,
+        },
+      });
+      toast.success(
+        enabled
+          ? `Scheduled again for ${campaign.schedule.time} daily`
+          : "Schedule paused"
+      );
+      await load();
+      onChanged?.();
+    } catch (err) {
+      toast.error(err.message);
     }
   }
 
@@ -587,12 +618,32 @@ export default function CampaignDetail({
                   <span className="font-medium text-foreground">Sending order: </span>
                   {describePick(campaign)}
                 </div>
-                <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    <Clock className="mr-1 inline size-3" />
-                    Schedule:{" "}
-                  </span>
-                  {describeSchedule(campaign)}
+                <div className="flex items-start justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <div>
+                    <span className="font-medium text-foreground">
+                      <Clock className="mr-1 inline size-3" />
+                      Schedule:{" "}
+                    </span>
+                    {describeSchedule(campaign)}
+                  </div>
+                  {(campaign.schedule?.enabled || wasEverConfigured(campaign.schedule)) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 shrink-0 px-2 text-xs"
+                      onClick={() => handleToggleSchedule(!campaign.schedule?.enabled)}
+                    >
+                      {campaign.schedule?.enabled ? (
+                        <>
+                          <Pause className="size-3" /> Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play className="size-3" /> Resume
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
 

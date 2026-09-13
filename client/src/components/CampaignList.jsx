@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Trash2, ChevronRight, Clock, Loader2 } from "lucide-react";
+import { Trash2, ChevronRight, Clock, Loader2, Pause, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,15 @@ const statusVariant = {
   failed: "destructive",
 };
 
-export default function CampaignList({ campaigns, onOpen, onDelete }) {
+// A schedule with non-default time/count was deliberately set up at some
+// point, even if it's currently off — worth a "paused" badge instead of
+// just disappearing, so it's obvious there's something to resume.
+function wasEverConfigured(schedule) {
+  if (!schedule) return false;
+  return schedule.time !== "09:00" || schedule.count !== 50 || !!schedule.lastRunAt;
+}
+
+export default function CampaignList({ campaigns, onOpen, onDelete, onToggleSchedule }) {
   return (
     <Card>
       <CardHeader>
@@ -32,6 +40,8 @@ export default function CampaignList({ campaigns, onOpen, onDelete }) {
       <CardContent className="grid gap-3">
         {campaigns.map((c, i) => {
           const { total = 0, sent = 0, failed = 0 } = c.counts || {};
+          const scheduled = !!c.schedule?.enabled;
+          const showScheduleBadge = scheduled || wasEverConfigured(c.schedule);
           return (
             <motion.div
               key={c._id}
@@ -49,10 +59,32 @@ export default function CampaignList({ campaigns, onOpen, onDelete }) {
                     )}
                     {c.status}
                   </Badge>
-                  {c.schedule?.enabled && (
-                    <Badge variant="outline" className="gap-1">
+                  {showScheduleBadge && (
+                    <Badge
+                      variant={scheduled ? "outline" : "warning"}
+                      className="gap-1 pr-1"
+                    >
                       <Clock className="size-3" />
-                      {c.schedule.time} · {c.schedule.count}/day
+                      {scheduled
+                        ? `Scheduled · ${c.schedule.time} · ${c.schedule.count}/day`
+                        : "Schedule paused"}
+                      {onToggleSchedule && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleSchedule(c, !scheduled);
+                          }}
+                          title={scheduled ? "Pause schedule" : "Resume schedule"}
+                          className="ml-0.5 flex size-4 items-center justify-center rounded-full hover:bg-foreground/10"
+                        >
+                          {scheduled ? (
+                            <Pause className="size-2.5" />
+                          ) : (
+                            <Play className="size-2.5" />
+                          )}
+                        </button>
+                      )}
                     </Badge>
                   )}
                 </div>

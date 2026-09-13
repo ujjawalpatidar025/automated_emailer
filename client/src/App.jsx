@@ -100,6 +100,26 @@ export default function App() {
     toast.success("Logged out");
   }
 
+  async function handleToggleSchedule(c, enabled) {
+    try {
+      await api.updateCampaign(c._id, {
+        schedule: {
+          enabled,
+          time: c.schedule?.time,
+          count: c.schedule?.count,
+        },
+      });
+      toast.success(
+        enabled
+          ? `"${c.name}" scheduled again for ${c.schedule.time} daily`
+          : `Schedule paused for "${c.name}"`
+      );
+      refresh();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
   // ── Auth gate ──────────────────────────────────────────────────────
   if (authLoading) {
     return (
@@ -276,6 +296,7 @@ export default function App() {
                     campaigns={campaigns}
                     onOpen={openCampaign}
                     onDelete={handleDelete}
+                    onToggleSchedule={handleToggleSchedule}
                   />
                 </div>
               </div>
