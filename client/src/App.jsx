@@ -178,7 +178,7 @@ export default function App() {
 
   // ── Main app ───────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen bg-muted/30">
+    <div className="flex h-screen overflow-hidden bg-muted/30">
       <Toaster richColors position="top-right" theme={theme} />
 
       <Sidebar
@@ -192,8 +192,8 @@ export default function App() {
         onCloseMobile={() => setSidebarOpen(false)}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-6">
+      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="z-10 flex shrink-0 items-center gap-3 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-6">
           <Button
             variant="ghost"
             size="icon"
@@ -212,7 +212,7 @@ export default function App() {
           </Button>
         </header>
 
-        <main className="mx-auto grid w-full max-w-6xl flex-1 content-start gap-4 p-4 sm:p-5 lg:p-6">
+        <main className="mx-auto grid w-full max-w-6xl flex-1 content-start gap-4 overflow-y-auto p-4 sm:p-5 lg:p-6">
           {health && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}

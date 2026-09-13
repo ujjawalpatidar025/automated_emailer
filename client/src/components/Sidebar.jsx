@@ -104,8 +104,8 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Desktop — permanent */}
-      <aside className="hidden w-64 shrink-0 border-r bg-card lg:block">
+      {/* Desktop — permanent, pinned to the viewport; only <main> scrolls */}
+      <aside className="hidden h-full w-64 shrink-0 border-r bg-card lg:block">
         <SidebarContent
           activeKey={activeKey}
           onNavigate={handleNavigate}
