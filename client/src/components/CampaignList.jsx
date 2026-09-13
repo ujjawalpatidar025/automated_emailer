@@ -1,7 +1,17 @@
 import { motion } from "framer-motion";
-import { Trash2, ChevronRight, Clock, Loader2, Pause, Play } from "lucide-react";
+import {
+  Trash2,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Pause,
+  Play,
+  Inbox,
+  PlusCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -26,19 +36,57 @@ function wasEverConfigured(schedule) {
   return schedule.time !== "09:00" || schedule.count !== 50 || !!schedule.lastRunAt;
 }
 
-export default function CampaignList({ campaigns, onOpen, onDelete, onToggleSchedule }) {
+export default function CampaignList({
+  campaigns,
+  loading,
+  onOpen,
+  onDelete,
+  onToggleSchedule,
+  onCreateNew,
+}) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Campaigns</CardTitle>
         <CardDescription>
-          {campaigns.length
+          {loading
+            ? "Loading your campaigns…"
+            : campaigns.length
             ? `${campaigns.length} campaign(s)`
-            : "No campaigns yet — create one above."}
+            : "No campaigns yet."}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {campaigns.map((c, i) => {
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border p-4">
+              <div className="grid min-w-0 flex-1 gap-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/4" />
+              </div>
+              <Skeleton className="h-8 w-20 shrink-0" />
+            </div>
+          ))
+        ) : campaigns.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
+              <Inbox className="size-6" />
+            </span>
+            <div>
+              <p className="font-medium">No campaigns yet</p>
+              <p className="text-sm text-muted-foreground">
+                Create your first campaign to get started.
+              </p>
+            </div>
+            {onCreateNew && (
+              <Button size="sm" onClick={onCreateNew}>
+                <PlusCircle /> Create campaign
+              </Button>
+            )}
+          </div>
+        ) : (
+          campaigns.map((c, i) => {
           const { total = 0, sent = 0, failed = 0 } = c.counts || {};
           const scheduled = !!c.schedule?.enabled;
           const showScheduleBadge = scheduled || wasEverConfigured(c.schedule);
@@ -111,8 +159,9 @@ export default function CampaignList({ campaigns, onOpen, onDelete, onToggleSche
                 </Button>
               </div>
             </motion.div>
-          );
-        })}
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );
