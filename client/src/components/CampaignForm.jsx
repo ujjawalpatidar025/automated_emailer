@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, Send, Clock } from "lucide-react";
+import { Loader2, Upload, Send, Clock, ListOrdered } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,25 +94,27 @@ export default function CampaignForm({ onCreated }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="grid gap-5">
-          <div className="grid gap-2">
-            <Label htmlFor="name">Campaign name</Label>
-            <Input
-              id="name"
-              placeholder="Backend roles — September"
-              value={form.name}
-              onChange={set("name")}
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Campaign name</Label>
+              <Input
+                id="name"
+                placeholder="Backend roles — September"
+                value={form.name}
+                onChange={set("name")}
+              />
+            </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="subject">Email subject</Label>
-            <Input
-              id="subject"
-              placeholder="Application for {{role}} — Ujjawal Patidar"
-              value={form.subject}
-              onChange={set("subject")}
-            />
+            <div className="grid gap-2">
+              <Label htmlFor="subject">Email subject</Label>
+              <Input
+                id="subject"
+                placeholder="Application for {{role}} — Ujjawal Patidar"
+                value={form.subject}
+                onChange={set("subject")}
+              />
+            </div>
           </div>
 
           <div className="grid gap-2">
@@ -162,107 +164,110 @@ export default function CampaignForm({ onCreated }) {
             personalisation if present; any other columns become placeholders.
           </p>
 
-          <div className="grid gap-2 rounded-md border p-3">
-            <Label>Where should sending start in the sheet?</Label>
-            <div className="flex flex-wrap gap-2">
-              {PICK_OPTIONS.map((opt) => (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-2.5 rounded-lg border bg-muted/30 p-3.5">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <ListOrdered className="size-3.5" /> Sending order
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                {PICK_OPTIONS.map((opt) => (
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    size="sm"
+                    variant={form.pickFrom === opt.value ? "default" : "outline"}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, pickFrom: opt.value }))
+                    }
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              {form.pickFrom === "offset" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="pickOffset" className="text-xs">
+                    Skip this many rows from the top of the sheet
+                  </Label>
+                  <Input
+                    id="pickOffset"
+                    type="number"
+                    min={0}
+                    value={form.pickOffset}
+                    onChange={set("pickOffset")}
+                    className="w-full sm:w-40"
+                  />
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Already-sent rows are always skipped. Changeable later too.
+              </p>
+            </div>
+
+            <div className="grid gap-2.5 rounded-lg border bg-muted/30 p-3.5">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Clock className="size-3.5" /> Sending mode
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
                 <Button
-                  key={opt.value}
                   type="button"
                   size="sm"
-                  variant={form.pickFrom === opt.value ? "default" : "outline"}
-                  onClick={() =>
-                    setForm((f) => ({ ...f, pickFrom: opt.value }))
-                  }
+                  variant={form.mode === "manual" ? "default" : "outline"}
+                  onClick={() => setForm((f) => ({ ...f, mode: "manual" }))}
                 >
-                  {opt.label}
+                  <Send /> Manual
                 </Button>
-              ))}
-            </div>
-            {form.pickFrom === "offset" && (
-              <div className="mt-1 grid gap-2">
-                <Label htmlFor="pickOffset" className="text-xs">
-                  Skip this many rows from the top of the sheet
-                </Label>
-                <Input
-                  id="pickOffset"
-                  type="number"
-                  min={0}
-                  value={form.pickOffset}
-                  onChange={set("pickOffset")}
-                  className="w-full sm:w-40"
-                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={form.mode === "scheduled" ? "default" : "outline"}
+                  onClick={() => setForm((f) => ({ ...f, mode: "scheduled" }))}
+                >
+                  <Clock /> Scheduled
+                </Button>
               </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              You can change this any time from the campaign page. Already-sent
-              rows are always skipped.
-            </p>
-          </div>
-
-          <div className="grid gap-2 rounded-md border p-3">
-            <Label>Sending mode</Label>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={form.mode === "manual" ? "default" : "outline"}
-                onClick={() => setForm((f) => ({ ...f, mode: "manual" }))}
-              >
-                <Send /> Manual
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={form.mode === "scheduled" ? "default" : "outline"}
-                onClick={() => setForm((f) => ({ ...f, mode: "scheduled" }))}
-              >
-                <Clock /> Scheduled
-              </Button>
-            </div>
-            {form.mode === "scheduled" ? (
-              <>
-                <div className="mt-1 flex flex-wrap items-end gap-3">
-                  <div className="grid gap-2">
-                    <Label htmlFor="scheduleTime" className="text-xs">
-                      Time to send (24h, daily)
-                    </Label>
-                    <Input
-                      id="scheduleTime"
-                      type="time"
-                      value={form.scheduleTime}
-                      onChange={set("scheduleTime")}
-                      className="w-full sm:w-32"
-                    />
+              {form.mode === "scheduled" ? (
+                <>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="grid gap-2">
+                      <Label htmlFor="scheduleTime" className="text-xs">
+                        Time (24h, daily)
+                      </Label>
+                      <Input
+                        id="scheduleTime"
+                        type="time"
+                        value={form.scheduleTime}
+                        onChange={set("scheduleTime")}
+                        className="w-full sm:w-32"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="scheduleCount" className="text-xs">
+                        Emails per day
+                      </Label>
+                      <Input
+                        id="scheduleCount"
+                        type="number"
+                        min={1}
+                        value={form.scheduleCount}
+                        onChange={set("scheduleCount")}
+                        className="w-full sm:w-32"
+                      />
+                    </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="scheduleCount" className="text-xs">
-                      Emails per day
-                    </Label>
-                    <Input
-                      id="scheduleCount"
-                      type="number"
-                      min={1}
-                      value={form.scheduleCount}
-                      onChange={set("scheduleCount")}
-                      className="w-full sm:w-32"
-                    />
-                  </div>
-                </div>
+                  <p className="text-xs text-muted-foreground">
+                    A cron job sends up to {form.scheduleCount || 0} pending
+                    recipient(s) daily at {form.scheduleTime}. Turn it off
+                    any time from the campaign page.
+                  </p>
+                </>
+              ) : (
                 <p className="text-xs text-muted-foreground">
-                  A cron job is created for this campaign — every day at{" "}
-                  {form.scheduleTime}, up to {form.scheduleCount || 0} pending
-                  recipient(s) are sent automatically. Turn it off any time from
-                  the campaign page.
+                  Nothing sends until you click "Send next batch" yourself —
+                  no cron job is created unless you pick Scheduled.
                 </p>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Nothing sends until you click "Send next batch" yourself. Switch
-                to Scheduled to have it go out automatically instead — no cron
-                job is created unless you pick that mode.
-              </p>
-            )}
+              )}
+            </div>
           </div>
 
           <Button type="submit" disabled={submitting} className="justify-self-start">

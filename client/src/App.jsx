@@ -193,7 +193,7 @@ export default function App() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-6">
+        <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-6">
           <Button
             variant="ghost"
             size="icon"
@@ -203,7 +203,7 @@ export default function App() {
           >
             <Menu className="size-5" />
           </Button>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight sm:text-lg">
             {PAGE_TITLES[view]}
           </h1>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
@@ -212,12 +212,12 @@ export default function App() {
           </Button>
         </header>
 
-        <main className="mx-auto grid w-full max-w-5xl flex-1 gap-6 p-4 sm:p-6">
+        <main className="mx-auto grid w-full max-w-6xl flex-1 content-start gap-4 p-4 sm:p-5 lg:p-6">
           {health && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex min-w-0 items-center gap-2 rounded-lg border p-3 text-sm ${
+              className={`flex min-w-0 items-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${
                 health.ok
                   ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
                   : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"

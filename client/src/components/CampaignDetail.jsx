@@ -345,7 +345,7 @@ export default function CampaignDetail({
   const busy = sending || retrying || sendingSelected || campaign.status === "sending";
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3.5">
       <Button
         variant="ghost"
         size="sm"
@@ -357,7 +357,8 @@ export default function CampaignDetail({
 
       {live.inProgress && (
         <Card className="border-primary/40">
-          <CardContent className="grid gap-3 py-4">
+          <CardContent className="grid gap-3 pt-4">
+
             <div className="flex items-center gap-2 text-sm font-medium">
               <Radio className="size-4 animate-pulse text-primary" />
               Sending now — batch #{live.batchNo}, {live.index || 0} of{" "}

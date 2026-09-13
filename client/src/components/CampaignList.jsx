@@ -56,10 +56,10 @@ export default function CampaignList({
             : "No campaigns yet."}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3">
+      <CardContent className="grid gap-2.5">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border p-4">
+            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border p-3.5">
               <div className="grid min-w-0 flex-1 gap-2">
                 <Skeleton className="h-4 w-1/3" />
                 <Skeleton className="h-3 w-2/3" />
@@ -96,7 +96,7 @@ export default function CampaignList({
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: Math.min(i, 8) * 0.04 }}
-              className="flex min-w-0 flex-col gap-3 rounded-lg border p-4 transition-colors hover:border-primary/40 hover:bg-accent/30 sm:flex-row sm:items-center sm:justify-between"
+              className="flex min-w-0 flex-col gap-3 rounded-lg border p-3.5 transition-colors hover:border-primary/40 hover:bg-accent/30 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">

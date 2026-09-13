@@ -30,7 +30,7 @@ const statusVariant = {
 
 function Stat({ label, value }) {
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-lg border bg-muted/30 p-3.5">
       <div className="text-2xl font-semibold tabular-nums">{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
@@ -175,7 +175,7 @@ export default function AnalyticsPage({ campaignId, onBack, onOpenCampaign }) {
               </div>
               <CardDescription>Analytics for this campaign</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-6">
+            <CardContent className="grid gap-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Stat label="Total" value={data.counts.total} />
                 <Stat label="Sent" value={data.counts.sent} />
@@ -323,7 +323,7 @@ export default function AnalyticsPage({ campaignId, onBack, onOpenCampaign }) {
               </CardTitle>
               <CardDescription>Across every campaign</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-6">
+            <CardContent className="grid gap-4">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Stat label="Total recipients" value={data.totals.total} />
                 <Stat label="Sent" value={data.totals.sent} />
