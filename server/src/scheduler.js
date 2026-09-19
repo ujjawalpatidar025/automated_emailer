@@ -6,14 +6,38 @@ import { orderedPending, runBatch } from "./services/sendService.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// Every schedule.time the user picks ("15:08") is IST wall-clock time,
+// full stop — regardless of what timezone the machine running this process
+// happens to be in (a Vercel/Render/Fly container defaults to UTC, which is
+// 5.5 hours off and was the actual cause of "I scheduled 15:08 and nothing
+// sent"). Every date/time computation below is pinned to this zone instead
+// of trusting the server's local clock.
+const IST_TZ = "Asia/Kolkata";
+
 // campaignId (string) -> the node-cron ScheduledTask currently registered for it
 const jobs = new Map();
 
+/** Today's date in IST as "YYYY-MM-DD", no matter the server's own timezone. */
 function todayStr(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return d.toLocaleDateString("en-CA", { timeZone: IST_TZ }); // en-CA formats as YYYY-MM-DD
+}
+
+/** Current wall-clock time in IST, as {dateStr, minutesSinceMidnight}. */
+function nowInIST(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const hh = Number(parts.find((p) => p.type === "hour").value);
+  const mm = Number(parts.find((p) => p.type === "minute").value);
+  return { dateStr: todayStr(d), minutes: hh * 60 + mm, label: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} IST` };
+}
+
+function timeToMinutes(time) {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
 }
 
 /** "09:30" -> "30 9 * * *" (minute hour every-day-of-month every-month every-weekday) */
@@ -81,7 +105,7 @@ export function syncCampaignSchedule(campaign) {
   if (!TIME_RE.test(campaign.schedule.time)) return;
 
   const expr = cronExprFor(campaign.schedule.time);
-  const task = cron.schedule(expr, () => fireScheduledSend(id));
+  const task = cron.schedule(expr, () => fireScheduledSend(id), { timezone: IST_TZ });
   jobs.set(id, task);
 }
 
@@ -103,4 +127,62 @@ export async function startScheduler() {
 
 export function activeJobCount() {
   return jobs.size;
+}
+
+/**
+ * Runs every schedule that is currently "due" in IST — enabled, valid time,
+ * not already run today (IST), and that time has already passed for today.
+ *
+ * `syncCampaignSchedule`'s `node-cron` jobs only exist inside a long-running
+ * process (`server/src/index.js`), which a Vercel serverless function is
+ * never one of — no code there ever calls `startScheduler()`, so those jobs
+ * are simply never registered on Vercel and nothing fires, independent of
+ * timezone. This is the fallback that makes scheduling actually work there:
+ * an outside pinger (see `tickHandler` below) hits `GET /api/cron/tick`
+ * every few minutes, and whatever's due gets sent right there in that
+ * request — no in-memory job needed. It's harmless to also run this
+ * alongside the long-running server's `node-cron` path (e.g. after a missed
+ * tick from a restart at exactly the scheduled minute); `fireScheduledSend`
+ * already no-ops a campaign that already ran today or isn't enabled.
+ */
+export async function runDueSchedules() {
+  const { dateStr, minutes: nowMinutes, label } = nowInIST();
+  const campaigns = await Campaign.find({ "schedule.enabled": true });
+  const due = campaigns.filter(
+    (c) =>
+      TIME_RE.test(c.schedule.time) &&
+      c.schedule.lastRunDate !== dateStr &&
+      timeToMinutes(c.schedule.time) <= nowMinutes
+  );
+  for (const c of due) await fireScheduledSend(String(c._id));
+  return { checkedAt: label, ran: due.map((c) => String(c._id)) };
+}
+
+/**
+ * `GET /api/cron/tick` — the serverless-friendly trigger for `runDueSchedules`.
+ * Meant to be hit by an external scheduler (cron-job.org, GitHub Actions on a
+ * `schedule:`, Vercel Cron, UptimeRobot's "keyword" check, …) every 5-15
+ * minutes, not a logged-in user — so it's authenticated with a single shared
+ * secret (`CRON_SECRET`) instead of a per-user JWT. Deliberately refuses to
+ * run with no secret configured at all, rather than silently accepting an
+ * unauthenticated request that can trigger real sends.
+ */
+export async function tickHandler(req, res) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return res.status(500).json({
+      error: "CRON_SECRET is not set on this deployment — refusing to run scheduled sends from an unauthenticated endpoint.",
+    });
+  }
+  const provided = req.headers["x-cron-secret"] || req.query.key;
+  if (provided !== secret) {
+    return res.status(401).json({ error: "Invalid or missing cron secret" });
+  }
+  try {
+    const result = await runDueSchedules();
+    res.json({ ok: true, ranCount: result.ran.length, ...result });
+  } catch (err) {
+    console.error("[cron-tick] failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 }

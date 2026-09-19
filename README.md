@@ -168,13 +168,9 @@ they're missing, rather than falling back to the normal entry point's
 *different* secret on every cold start (no writable disk to save it to) and
 randomly invalidate sessions and undecryptable stored Gmail passwords.
 
-Three real gaps from running here instead of a long-running host, not config
+Two real gaps from running here instead of a long-running host, not config
 issues you can tune away:
 
-- **Scheduled (cron) campaigns never fire.** The scheduler needs a process
-  that's always running; a serverless function only exists for the duration
-  of a request. Manual sending and "Send to specific people" still work fine
-  — each is one request, fully awaited before responding.
 - **Live SSE tracking won't show updates.** `EventSource` expects the
   connection to stay open indefinitely; Vercel's function timeout
   (`maxDuration`, set to 60s in `vercel.json`) cuts it off. The app still
@@ -185,8 +181,37 @@ issues you can tune away:
   creating a campaign may be gone by the time a later "send" request (quite
   possibly a different cold-started instance) tries to attach it.
 
-If you need scheduling, live tracking, and reliable attachments, use one of
-the always-on hosts above instead.
+If you need live tracking and reliable attachments, use one of the always-on
+hosts above instead.
+
+### Scheduling on Vercel (`GET /api/cron/tick`)
+
+Scheduled campaigns *do* work on Vercel, just not via `node-cron` — a
+serverless function has no persistent process for an in-memory job to live
+in, so `server/api/index.js` never calls `startScheduler()` and those jobs
+are simply never registered there, independent of timezone. Instead,
+`GET /api/cron/tick` (`server/src/scheduler.js`'s `runDueSchedules`) checks
+every enabled schedule against the current time **in IST** and fires
+whichever are due, right there in that one request — no long-running process
+needed. You just need something outside Vercel to actually call it on a
+schedule:
+
+1. Set `CRON_SECRET` to a random string in the Vercel project's env vars
+   (the route refuses to run with none set, rather than being an open
+   unauthenticated way to trigger sends).
+2. Point a free external pinger at
+   `https://<your-backend>.vercel.app/api/cron/tick?key=<CRON_SECRET>` every
+   **5-15 minutes** — [cron-job.org](https://cron-job.org), a GitHub Actions
+   workflow on a `schedule:` trigger, or Vercel's own
+   [Cron Jobs](https://vercel.com/docs/cron-jobs) (Hobby plan limits those to
+   once a day, which is too coarse for an arbitrary time like `15:08`, so an
+   external 5-15 minute pinger is the reliable option regardless of plan).
+
+A campaign scheduled for `15:08` fires on the first tick at or after
+`15:08 IST` — a few minutes later than the exact minute, unlike the
+always-on hosts' exact-minute `node-cron` firing, but it does fire. Every
+`schedule.time` is always interpreted as IST wall-clock time on every
+deployment target, never the host machine's own timezone.
 
 ---
 
@@ -259,6 +284,7 @@ request (`requireAuth` — a JWT sent as `Authorization: Bearer <token>`, or
 | `GET /api/campaigns/:id/stream` | Server-Sent Events — live `sending` / `sent` / `failed` / `batch-done` |
 | `GET /api/campaigns/:id/analytics` | counts, per-day sent/failed series, batch history, failed-recipient list |
 | `GET /api/analytics` | the same, aggregated across all of your campaigns |
+| `GET /api/cron/tick` | **not** user-authenticated — `?key=` or `X-Cron-Secret` header must match `CRON_SECRET`. Fires every due schedule in IST; see "Scheduling on Vercel" |
 
 ### Stopping on failure
 
@@ -296,9 +322,18 @@ scheduled campaign, kept in an in-memory `Map<campaignId, ScheduledTask>`:
 When a job fires it loads the campaign's owner, decrypts their App Password,
 and runs a batch of `count` pending recipients through the exact same
 `runBatch` engine as a manual send (same sending order, same stop-on-failure).
-Times are the **server's local time zone**. There's still no OS-level cron or
-separate process — the jobs live inside the Node process, so a schedule only
-fires while the backend is running (see limitations below).
+
+**Every `schedule.time` is always IST (`Asia/Kolkata`) wall-clock time**,
+regardless of what timezone the host machine itself is set to —
+`cron.schedule(expr, fn, { timezone: "Asia/Kolkata" })` pins it explicitly.
+Most hosts (Render, Fly.io, Vercel) default their containers to UTC, so
+without this a campaign "scheduled for 15:08" would actually fire at
+15:08 UTC = 20:38 IST instead — 5.5 hours late — which is exactly the "I
+scheduled it and nothing sent (yet)" symptom this fixes. There's still no
+OS-level cron or separate process on a long-running host — the jobs live
+inside the Node process, so a schedule only fires while the backend is
+running (see "Scheduling on Vercel" above for the serverless case, where
+there's no persistent process for these jobs at all).
 
 ### Server heartbeat (every 4 minutes)
 
