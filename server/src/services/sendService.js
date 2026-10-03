@@ -10,7 +10,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const PICK_MODES = ["start", "end", "offset"];
 
 // Fixed gap between each individual email in a batch — not configurable.
-export const SEND_DELAY_MS = 5000;
+// 2s, not more: every extra second here is pure dead time added to a
+// batch's total request duration, and that duration is what actually
+// decides whether the request finishes before Vercel's 60s maxDuration
+// kills it mid-batch (see runBatch's staleness guard below, and the
+// "Force stop" button on the campaign page for recovering when it does).
+export const SEND_DELAY_MS = 2000;
 
 /** Pending recipients for the next batch, ordered per the campaign's pick mode. */
 export function orderedPending(campaign) {

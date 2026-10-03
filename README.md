@@ -65,7 +65,7 @@ Fill in `server/.env`:
 | `JWT_SECRET` / `CREDENTIAL_ENCRYPTION_KEY` | leave blank — generated automatically on first boot and saved back to this file |
 | `MAX_BATCH_SIZE` | server-side ceiling per send/retry request (default 200) |
 
-The gap between each individual email is fixed at 5 seconds
+The gap between each individual email is fixed at 2 seconds
 (`server/src/services/sendService.js`'s `SEND_DELAY_MS`), not configurable.
 
 That's the whole backend config — **no global Gmail credentials**. Each user
@@ -233,7 +233,7 @@ What this project does for deliverability:
   `text/html`** parts (spam filters distrust HTML-only mail).
 - **`List-Unsubscribe` + `List-Unsubscribe-Post` headers** on every message
   (required by Gmail/Yahoo bulk-sender rules and a positive inbox signal).
-- **Throttling** — one email at a time with a fixed 5s gap between them, sent
+- **Throttling** — one email at a time with a fixed 2s gap between them, sent
   in **small batches you control**, and the whole run **stops on the first
   failure** rather than plowing through a broken list.
 - **De-duplication and basic validation** of the CSV before anything is queued.
@@ -419,12 +419,12 @@ name/company, use a fallback so the copy still reads naturally:
 
 ## Notes & limitations
 
-- Sending is **synchronous** within a request: a batch of 50 at the fixed 5s
-  gap takes ~250s+ to return — well past Vercel's 60s function timeout, which
+- Sending is **synchronous** within a request: a batch of 50 at the fixed 2s
+  gap still takes ~150s+ to return — past Vercel's 60s function timeout, which
   kills the request mid-batch and leaves the campaign stuck `"sending"` (see
   `runBatch`'s staleness recovery and the "Force stop" button on the campaign
   page for getting out of that). Keep batches small on a serverless deploy
-  (roughly 5-8 recipients at a time), or move sending to a queue/worker, or
+  (roughly 10-12 recipients at a time), or move sending to a queue/worker, or
   use an always-on host, for higher volume.
 - Resumes are stored on Cloudinary (`server/src/services/cloudinary.js`),
   deleted when the campaign is deleted or the resume is replaced.
