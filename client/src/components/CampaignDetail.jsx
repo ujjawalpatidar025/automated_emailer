@@ -19,7 +19,6 @@ import {
   Pause,
   Play,
   Upload,
-  Timer,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -227,7 +226,6 @@ export default function CampaignDetail({
       body: campaign.body,
       pickFrom: campaign.pickFrom || "start",
       pickOffset: campaign.pickOffset || 0,
-      sendDelaySec: campaign.sendDelaySec || 10,
       schedule: {
         enabled: campaign.schedule?.enabled || false,
         time: campaign.schedule?.time || "09:00",
@@ -241,10 +239,6 @@ export default function CampaignDetail({
     if (!draft.name.trim() || !draft.subject.trim() || !draft.body.trim()) {
       return toast.error("Name, subject and body can't be empty");
     }
-    const delaySec = Number(draft.sendDelaySec);
-    if (!Number.isInteger(delaySec) || delaySec < 10 || delaySec > 300) {
-      return toast.error("Gap between emails must be a whole number between 10 and 300 seconds");
-    }
     setSaving(true);
     try {
       await api.updateCampaign(campaignId, {
@@ -253,7 +247,6 @@ export default function CampaignDetail({
         body: draft.body,
         pickFrom: draft.pickFrom,
         pickOffset: Math.max(0, Math.floor(Number(draft.pickOffset) || 0)),
-        sendDelaySec: delaySec,
         schedule: {
           enabled: draft.schedule.enabled,
           time: draft.schedule.time,
@@ -316,11 +309,6 @@ export default function CampaignDetail({
     setSending(true);
     try {
       const res = await api.sendBatch(campaignId, n);
-      if (res.cappedTo) {
-        toast.warning(
-          `You asked for ${n}, but this server caps a single send at ${res.cappedTo} given the ${campaign.sendDelaySec || 10}s gap (avoids the request timing out mid-batch). Send again to continue.`
-        );
-      }
       toastBatchDone(res.report);
       await load();
       onChanged?.();
@@ -641,25 +629,6 @@ export default function CampaignDetail({
               </div>
 
               <div className="grid gap-2 rounded-md border p-3">
-                <Label htmlFor="edit-sendDelaySec" className="flex items-center gap-1.5">
-                  <Timer className="size-4" /> Gap between emails (seconds)
-                </Label>
-                <Input
-                  id="edit-sendDelaySec"
-                  type="number"
-                  min={10}
-                  max={300}
-                  value={draft.sendDelaySec}
-                  onChange={(e) => setDraftField("sendDelaySec")(e.target.value)}
-                  className="w-full sm:w-32"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Between 10 and 300 seconds, applied to manual sends, scheduled
-                  sends and retries alike.
-                </p>
-              </div>
-
-              <div className="grid gap-2 rounded-md border p-3">
                 <Label className="flex items-center gap-1.5">
                   <Clock className="size-4" /> Sending mode
                 </Label>
@@ -769,9 +738,6 @@ export default function CampaignDetail({
                 <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Sending order: </span>
                   {describePick(campaign)}
-                  <br />
-                  <span className="font-medium text-foreground">Gap: </span>
-                  {campaign.sendDelaySec || 10}s between each email.
                 </div>
                 <div className="flex items-start justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                   <div>

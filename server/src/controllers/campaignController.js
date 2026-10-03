@@ -2,23 +2,12 @@ import { Campaign } from "../models/Campaign.js";
 import { User } from "../models/User.js";
 import { decryptSecret } from "../utils/crypto.js";
 import { parseRecipientsCsv } from "../services/csvService.js";
-import {
-  PICK_MODES,
-  orderedPending,
-  runBatch,
-  clampSendDelaySec,
-  maxSafeBatchSize,
-} from "../services/sendService.js";
+import { PICK_MODES, orderedPending, runBatch } from "../services/sendService.js";
 import { subscribeProgress, emitProgress } from "../services/progressBus.js";
 import { syncCampaignSchedule, removeCampaignSchedule } from "../scheduler.js";
 import { uploadResume, deleteResume } from "../services/cloudinary.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-function isValidDelaySec(value) {
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 10 && n <= 300;
-}
 
 /** The authenticated user, with their app password decrypted and ready to use. */
 async function loadSender(userId) {
@@ -39,7 +28,6 @@ export async function createCampaign(req, res) {
     isHtml,
     pickFrom,
     pickOffset,
-    sendDelaySec,
     scheduleEnabled,
     scheduleTime,
     scheduleCount,
@@ -52,9 +40,6 @@ export async function createCampaign(req, res) {
   }
   if (!csvFile) {
     return res.status(400).json({ error: "A recipients .csv file is required" });
-  }
-  if (sendDelaySec != null && !isValidDelaySec(sendDelaySec)) {
-    return res.status(400).json({ error: "sendDelaySec must be a whole number between 10 and 300" });
   }
 
   const wantsSchedule = scheduleEnabled === "true" || scheduleEnabled === true;
@@ -110,7 +95,6 @@ export async function createCampaign(req, res) {
     })),
     pickFrom: PICK_MODES.includes(pickFrom) ? pickFrom : "start",
     pickOffset: Math.max(0, Math.floor(Number(pickOffset) || 0)),
-    ...(sendDelaySec != null ? { sendDelaySec: Number(sendDelaySec) } : {}),
     ...(schedule ? { schedule } : {}),
   });
 
@@ -154,7 +138,7 @@ export async function updateCampaign(req, res) {
       .json({ error: "Can't edit a campaign while it is sending" });
   }
 
-  const { name, subject, body, isHtml, pickFrom, pickOffset, sendDelaySec, schedule } = req.body;
+  const { name, subject, body, isHtml, pickFrom, pickOffset, schedule } = req.body;
 
   if (name != null) {
     if (!String(name).trim()) return res.status(400).json({ error: "name cannot be empty" });
@@ -185,13 +169,6 @@ export async function updateCampaign(req, res) {
     }
     campaign.pickOffset = Math.floor(n);
   }
-  if (sendDelaySec != null) {
-    if (!isValidDelaySec(sendDelaySec)) {
-      return res.status(400).json({ error: "sendDelaySec must be a whole number between 10 and 300" });
-    }
-    campaign.sendDelaySec = Number(sendDelaySec);
-  }
-
   if (schedule != null) {
     if (typeof schedule !== "object") {
       return res.status(400).json({ error: "schedule must be an object" });
@@ -323,7 +300,7 @@ export async function sendBatch(req, res) {
 
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
   const requested = Math.max(1, Number(req.body.count) || 0);
-  const count = Math.min(requested, maxBatch, maxSafeBatchSize(campaign.sendDelaySec));
+  const count = Math.min(requested, maxBatch);
 
   const allPending = campaign.recipients.filter((r) => r.status === "pending");
   if (allPending.length === 0) {
@@ -340,12 +317,7 @@ export async function sendBatch(req, res) {
   try {
     const { user, appPassword } = await loadSender(req.userId);
     const report = await runBatch(campaign, list, { trigger: "manual", user, appPassword });
-    res.json({
-      report,
-      counts: campaign.counts,
-      status: campaign.status,
-      cappedTo: count < requested ? count : undefined,
-    });
+    res.json({ report, counts: campaign.counts, status: campaign.status });
   } catch (err) {
     res.status(err.code === "ALREADY_SENDING" ? 409 : 400).json({ error: err.message });
   }
@@ -379,13 +351,6 @@ export async function sendSelected(req, res) {
       .status(400)
       .json({ error: `You can send to at most ${maxBatch} addresses at once` });
   }
-  const safeMax = maxSafeBatchSize(campaign.sendDelaySec);
-  if (requested.length > safeMax) {
-    return res.status(400).json({
-      error: `At a ${clampSendDelaySec(campaign.sendDelaySec)}s gap between emails, at most ${safeMax} address(es) can be sent in one request here (the server has a hard time limit per request). Select fewer, or lower the gap.`,
-    });
-  }
-
   const invalid = requested.filter((e) => !EMAIL_RE.test(e));
   const uniqueValid = [...new Set(requested.filter((e) => EMAIL_RE.test(e)))];
 
@@ -453,18 +418,15 @@ export async function retryFailed(req, res) {
 
   const { ids, count } = req.body || {};
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
-  const safeMax = maxSafeBatchSize(campaign.sendDelaySec);
 
   let targets;
   if (Array.isArray(ids) && ids.length > 0) {
     const idSet = new Set(ids.map(String));
-    targets = campaign.recipients
-      .filter((r) => r.status === "failed" && idSet.has(String(r._id)))
-      .slice(0, safeMax);
+    targets = campaign.recipients.filter((r) => r.status === "failed" && idSet.has(String(r._id)));
   } else {
     const failedRecipients = campaign.recipients.filter((r) => r.status === "failed");
     const n = count != null ? Math.max(1, Number(count) || 0) : failedRecipients.length;
-    targets = failedRecipients.slice(0, Math.min(n, maxBatch, safeMax));
+    targets = failedRecipients.slice(0, Math.min(n, maxBatch));
   }
 
   if (targets.length === 0) {

@@ -9,34 +9,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 //   offset -> skip the first `pickOffset` rows of the sheet, then go in order
 export const PICK_MODES = ["start", "end", "offset"];
 
-// Gap between each individual email in a batch, in seconds.
-export const SEND_DELAY_MIN_SEC = 10;
-export const SEND_DELAY_MAX_SEC = 300;
-
-export function clampSendDelaySec(value) {
-  return Math.min(
-    SEND_DELAY_MAX_SEC,
-    Math.max(SEND_DELAY_MIN_SEC, Math.floor(Number(value) || SEND_DELAY_MIN_SEC))
-  );
-}
-
-// A batch runs synchronously inside one request. On Vercel that request is
-// hard-killed at vercel.json's maxDuration (60s) — with no partial-batch
-// recovery, whatever email it died on (and everything after) is left
-// "pending" and the campaign stuck "sending" until runBatch's own staleness
-// guard or a manual force-stop clears it. Capping the batch size up front,
-// scaled to the configured delay, keeps a batch comfortably inside that
-// window instead of hoping it finishes in time.
-const PER_EMAIL_SEND_MS = 3000; // generous allowance for one SMTP round-trip
-const SAFETY_BUDGET_MS = 50_000; // stay well under the 60s maxDuration
-
-export function maxSafeBatchSize(sendDelaySec) {
-  if (!process.env.VERCEL) return Infinity; // only a serverless function has this ceiling at all
-  const delayMs = clampSendDelaySec(sendDelaySec) * 1000;
-  // n sends + (n-1) gaps must fit the budget:  n*send + (n-1)*delay <= budget
-  const n = Math.floor((SAFETY_BUDGET_MS + delayMs) / (PER_EMAIL_SEND_MS + delayMs));
-  return Math.max(1, n);
-}
+// Fixed gap between each individual email in a batch — not configurable.
+export const SEND_DELAY_MS = 5000;
 
 /** Pending recipients for the next batch, ordered per the campaign's pick mode. */
 export function orderedPending(campaign) {
@@ -114,7 +88,7 @@ export async function runBatch(
     // ever finish it. Recovering automatically here means a crashed batch
     // only blocks the *next* attempt for a couple of minutes, not forever.
     const total = campaign.progress?.total || 1;
-    const perEmailMs = clampSendDelaySec(campaign.sendDelaySec) * 1000 + 15_000; // + generous SMTP allowance
+    const perEmailMs = SEND_DELAY_MS + 15_000; // + generous SMTP allowance
     const expectedMs = total * perEmailMs;
     const startedAt = campaign.progress?.startedAt
       ? new Date(campaign.progress.startedAt).getTime()
@@ -160,7 +134,7 @@ export async function runBatch(
     });
   }
 
-  const delay = clampSendDelaySec(campaign.sendDelaySec) * 1000;
+  const delay = SEND_DELAY_MS;
   const attachment = campaign.resume?.url
     ? { path: campaign.resume.url, originalName: campaign.resume.originalName }
     : null;
