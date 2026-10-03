@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { Campaign } from "./models/Campaign.js";
 import { User } from "./models/User.js";
 import { decryptSecret } from "./utils/crypto.js";
-import { orderedPending, runBatch } from "./services/sendService.js";
+import { orderedPending, runBatch, maxSafeBatchSize } from "./services/sendService.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -70,7 +70,11 @@ async function fireScheduledSend(campaignId) {
   }
 
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
-  const count = Math.min(Math.max(1, Math.floor(Number(campaign.schedule.count) || 1)), maxBatch);
+  const count = Math.min(
+    Math.max(1, Math.floor(Number(campaign.schedule.count) || 1)),
+    maxBatch,
+    maxSafeBatchSize(campaign.sendDelaySec)
+  );
 
   campaign.schedule.lastRunDate = today;
   campaign.schedule.lastRunAt = new Date();

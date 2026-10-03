@@ -191,6 +191,23 @@ export default function CampaignDetail({
         }));
       } else if (evt.type === "sent" || evt.type === "failed") {
         setActivity((prev) => [evt, ...prev].slice(0, 8));
+        // Update this recipient's row immediately — don't wait for
+        // batch-done (which may never arrive if the batch later crashes).
+        setCampaign((c) => {
+          if (!c) return c;
+          const recipients = c.recipients.map((r) =>
+            r.email === evt.email
+              ? {
+                  ...r,
+                  status: evt.type === "sent" ? "sent" : "failed",
+                  sentAt: evt.type === "sent" ? new Date().toISOString() : r.sentAt,
+                  failedAt: evt.type === "failed" ? new Date().toISOString() : r.failedAt,
+                  error: evt.type === "failed" ? evt.error : r.error,
+                }
+              : r
+          );
+          return { ...c, recipients };
+        });
       } else if (evt.type === "batch-done") {
         setLive({ inProgress: false });
         toastBatchDone(evt.report);
@@ -299,6 +316,11 @@ export default function CampaignDetail({
     setSending(true);
     try {
       const res = await api.sendBatch(campaignId, n);
+      if (res.cappedTo) {
+        toast.warning(
+          `You asked for ${n}, but this server caps a single send at ${res.cappedTo} given the ${campaign.sendDelaySec || 10}s gap (avoids the request timing out mid-batch). Send again to continue.`
+        );
+      }
       toastBatchDone(res.report);
       await load();
       onChanged?.();
@@ -406,7 +428,13 @@ export default function CampaignDetail({
   }
   if (!campaign) return null;
 
-  const { total, sent, failed, pending } = campaign.counts;
+  // Derived straight from `recipients`, not the server's `counts` snapshot —
+  // the SSE "sent"/"failed" handler patches recipients in place in realtime,
+  // and counts need to track that without waiting for a full reload.
+  const total = campaign.recipients.length;
+  const sent = campaign.recipients.filter((r) => r.status === "sent").length;
+  const failed = campaign.recipients.filter((r) => r.status === "failed").length;
+  const pending = total - sent - failed;
   const pct = total ? Math.round(((sent + failed) / total) * 100) : 0;
   const setDraftField = (k) => (v) => setDraft((d) => ({ ...d, [k]: v }));
   const busy = sending || retrying || sendingSelected || campaign.status === "sending";

@@ -2,7 +2,13 @@ import { Campaign } from "../models/Campaign.js";
 import { User } from "../models/User.js";
 import { decryptSecret } from "../utils/crypto.js";
 import { parseRecipientsCsv } from "../services/csvService.js";
-import { PICK_MODES, orderedPending, runBatch, clampSendDelaySec } from "../services/sendService.js";
+import {
+  PICK_MODES,
+  orderedPending,
+  runBatch,
+  clampSendDelaySec,
+  maxSafeBatchSize,
+} from "../services/sendService.js";
 import { subscribeProgress, emitProgress } from "../services/progressBus.js";
 import { syncCampaignSchedule, removeCampaignSchedule } from "../scheduler.js";
 import { uploadResume, deleteResume } from "../services/cloudinary.js";
@@ -317,7 +323,7 @@ export async function sendBatch(req, res) {
 
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
   const requested = Math.max(1, Number(req.body.count) || 0);
-  const count = Math.min(requested, maxBatch);
+  const count = Math.min(requested, maxBatch, maxSafeBatchSize(campaign.sendDelaySec));
 
   const allPending = campaign.recipients.filter((r) => r.status === "pending");
   if (allPending.length === 0) {
@@ -334,7 +340,12 @@ export async function sendBatch(req, res) {
   try {
     const { user, appPassword } = await loadSender(req.userId);
     const report = await runBatch(campaign, list, { trigger: "manual", user, appPassword });
-    res.json({ report, counts: campaign.counts, status: campaign.status });
+    res.json({
+      report,
+      counts: campaign.counts,
+      status: campaign.status,
+      cappedTo: count < requested ? count : undefined,
+    });
   } catch (err) {
     res.status(err.code === "ALREADY_SENDING" ? 409 : 400).json({ error: err.message });
   }
@@ -367,6 +378,12 @@ export async function sendSelected(req, res) {
     return res
       .status(400)
       .json({ error: `You can send to at most ${maxBatch} addresses at once` });
+  }
+  const safeMax = maxSafeBatchSize(campaign.sendDelaySec);
+  if (requested.length > safeMax) {
+    return res.status(400).json({
+      error: `At a ${clampSendDelaySec(campaign.sendDelaySec)}s gap between emails, at most ${safeMax} address(es) can be sent in one request here (the server has a hard time limit per request). Select fewer, or lower the gap.`,
+    });
   }
 
   const invalid = requested.filter((e) => !EMAIL_RE.test(e));
@@ -436,15 +453,18 @@ export async function retryFailed(req, res) {
 
   const { ids, count } = req.body || {};
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
+  const safeMax = maxSafeBatchSize(campaign.sendDelaySec);
 
   let targets;
   if (Array.isArray(ids) && ids.length > 0) {
     const idSet = new Set(ids.map(String));
-    targets = campaign.recipients.filter((r) => r.status === "failed" && idSet.has(String(r._id)));
+    targets = campaign.recipients
+      .filter((r) => r.status === "failed" && idSet.has(String(r._id)))
+      .slice(0, safeMax);
   } else {
     const failedRecipients = campaign.recipients.filter((r) => r.status === "failed");
     const n = count != null ? Math.max(1, Number(count) || 0) : failedRecipients.length;
-    targets = failedRecipients.slice(0, Math.min(n, maxBatch));
+    targets = failedRecipients.slice(0, Math.min(n, maxBatch, safeMax));
   }
 
   if (targets.length === 0) {

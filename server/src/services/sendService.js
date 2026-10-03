@@ -20,6 +20,24 @@ export function clampSendDelaySec(value) {
   );
 }
 
+// A batch runs synchronously inside one request. On Vercel that request is
+// hard-killed at vercel.json's maxDuration (60s) — with no partial-batch
+// recovery, whatever email it died on (and everything after) is left
+// "pending" and the campaign stuck "sending" until runBatch's own staleness
+// guard or a manual force-stop clears it. Capping the batch size up front,
+// scaled to the configured delay, keeps a batch comfortably inside that
+// window instead of hoping it finishes in time.
+const PER_EMAIL_SEND_MS = 3000; // generous allowance for one SMTP round-trip
+const SAFETY_BUDGET_MS = 50_000; // stay well under the 60s maxDuration
+
+export function maxSafeBatchSize(sendDelaySec) {
+  if (!process.env.VERCEL) return Infinity; // only a serverless function has this ceiling at all
+  const delayMs = clampSendDelaySec(sendDelaySec) * 1000;
+  // n sends + (n-1) gaps must fit the budget:  n*send + (n-1)*delay <= budget
+  const n = Math.floor((SAFETY_BUDGET_MS + delayMs) / (PER_EMAIL_SEND_MS + delayMs));
+  return Math.max(1, n);
+}
+
 /** Pending recipients for the next batch, ordered per the campaign's pick mode. */
 export function orderedPending(campaign) {
   const mode = PICK_MODES.includes(campaign.pickFrom) ? campaign.pickFrom : "start";
