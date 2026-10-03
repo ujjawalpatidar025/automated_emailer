@@ -99,6 +99,8 @@ export const api = {
     return request(`/campaigns/${id}/resume`, { method: "PUT", body: fd });
   },
 
+  forceStopSend: (id) => request(`/campaigns/${id}/stop`, { method: "POST" }),
+
   sendBatch: (id, count) =>
     request(`/campaigns/${id}/send`, {
       method: "POST",

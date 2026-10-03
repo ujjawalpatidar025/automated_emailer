@@ -89,9 +89,29 @@ export async function runBatch(
   const verify = deps?.verifyMailer || (() => verifyMailerFor(user, appPassword));
 
   if (campaign.status === "sending") {
-    throw Object.assign(new Error("This campaign is already sending"), {
-      code: "ALREADY_SENDING",
-    });
+    // A batch that's actually still running never takes longer than its own
+    // worst-case estimate — if we're well past that, the process that was
+    // running it died mid-batch (e.g. a Vercel function hitting its 60s
+    // maxDuration) and left `status: "sending"` behind with nothing left to
+    // ever finish it. Recovering automatically here means a crashed batch
+    // only blocks the *next* attempt for a couple of minutes, not forever.
+    const total = campaign.progress?.total || 1;
+    const perEmailMs = clampSendDelaySec(campaign.sendDelaySec) * 1000 + 15_000; // + generous SMTP allowance
+    const expectedMs = total * perEmailMs;
+    const startedAt = campaign.progress?.startedAt
+      ? new Date(campaign.progress.startedAt).getTime()
+      : 0;
+    const isStale = Date.now() - startedAt > expectedMs + 2 * 60 * 1000;
+
+    if (!isStale) {
+      throw Object.assign(new Error("This campaign is already sending"), {
+        code: "ALREADY_SENDING",
+      });
+    }
+    console.error(
+      `[sendService] campaign ${campaign._id}: recovering from a stale "sending" status ` +
+        `(started ${campaign.progress?.startedAt}, never finished) — likely crashed mid-batch`
+    );
   }
   if (!list || list.length === 0) {
     throw Object.assign(new Error("Nothing to send"), { code: "EMPTY_BATCH" });

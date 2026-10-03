@@ -121,6 +121,7 @@ export default function CampaignDetail({
   const [draft, setDraft] = useState(null);
   const [uploadingResume, setUploadingResume] = useState(false);
   const resumeInputRef = useRef(null);
+  const [stoppingStuck, setStoppingStuck] = useState(false);
 
   // Live "what's sending right now" — fed by Server-Sent Events.
   const [live, setLive] = useState({ inProgress: false });
@@ -267,6 +268,28 @@ export default function CampaignDetail({
       toast.error(err.message);
     } finally {
       setUploadingResume(false);
+    }
+  }
+
+  async function handleForceStop() {
+    if (
+      !window.confirm(
+        "Only do this if the send is genuinely stuck (not progressing) — not if it's actually still running. Continue?"
+      )
+    ) {
+      return;
+    }
+    setStoppingStuck(true);
+    try {
+      const { campaign: updated } = await api.forceStopSend(campaignId);
+      setCampaign(updated);
+      setLive({ inProgress: false });
+      toast.success("Send stopped — status reset");
+      onChanged?.();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setStoppingStuck(false);
     }
   }
 
@@ -455,6 +478,22 @@ export default function CampaignDetail({
             </div>
             {!editing ? (
               <div className="flex shrink-0 gap-2">
+                {campaign.status === "sending" && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={stoppingStuck}
+                    onClick={handleForceStop}
+                    title="Only use this if the send is actually stuck (e.g. stopped progressing) — not if it's genuinely still running."
+                  >
+                    {stoppingStuck ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <AlertTriangle />
+                    )}
+                    Force stop (stuck?)
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={onOpenAnalytics}>
                   <BarChart3 /> Analytics
                 </Button>

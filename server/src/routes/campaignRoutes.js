@@ -8,6 +8,7 @@ import {
   updateCampaign,
   deleteCampaign,
   replaceResume,
+  forceStopSend,
   sendBatch,
   sendSelected,
   retryFailed,
@@ -32,6 +33,7 @@ router.patch("/campaigns/:id", h(updateCampaign));
 router.delete("/campaigns/:id", h(deleteCampaign));
 router.put("/campaigns/:id/resume", uploadCampaignFiles, h(replaceResume));
 
+router.post("/campaigns/:id/stop", h(forceStopSend));
 router.post("/campaigns/:id/send", h(sendBatch));
 router.post("/campaigns/:id/send-selected", h(sendSelected));
 router.post("/campaigns/:id/retry-failed", h(retryFailed));

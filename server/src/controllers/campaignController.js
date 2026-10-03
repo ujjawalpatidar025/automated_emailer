@@ -3,7 +3,7 @@ import { User } from "../models/User.js";
 import { decryptSecret } from "../utils/crypto.js";
 import { parseRecipientsCsv } from "../services/csvService.js";
 import { PICK_MODES, orderedPending, runBatch, clampSendDelaySec } from "../services/sendService.js";
-import { subscribeProgress } from "../services/progressBus.js";
+import { subscribeProgress, emitProgress } from "../services/progressBus.js";
 import { syncCampaignSchedule, removeCampaignSchedule } from "../scheduler.js";
 import { uploadResume, deleteResume } from "../services/cloudinary.js";
 
@@ -261,6 +261,49 @@ export async function replaceResume(req, res) {
   if (previousPublicId) {
     deleteResume(previousPublicId).catch(() => {});
   }
+
+  res.json({ campaign });
+}
+
+// POST /api/campaigns/:id/stop
+// Manually recovers a campaign stuck showing status "sending" with nothing
+// actually still running — e.g. a Vercel function that hit its 60s
+// maxDuration mid-batch and got killed before it could finalize. runBatch
+// has its own time-based auto-recovery for the *next* send attempt, but this
+// lets the user unstick it immediately instead of waiting that out.
+export async function forceStopSend(req, res) {
+  const campaign = await Campaign.findOne({ _id: req.params.id, user: req.userId });
+  if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+  if (campaign.status !== "sending") {
+    return res.status(409).json({ error: "This campaign isn't currently sending" });
+  }
+
+  const stillPending = campaign.recipients.some((r) => r.status === "pending");
+  campaign.status = stillPending ? "paused" : "completed";
+  const report = {
+    batchNo: (campaign.batchLog?.length || 0) + 1,
+    trigger: campaign.progress?.trigger || "manual",
+    requested: campaign.progress?.total || 0,
+    attempted: 0,
+    sent: 0,
+    failed: 0,
+    stoppedEarly: true,
+    stopReason: "Manually reset after the send got stuck (likely a server timeout mid-batch).",
+    pickFrom: campaign.pickFrom || "start",
+    pickOffset: campaign.pickFrom === "offset" ? campaign.pickOffset || 0 : undefined,
+    finishedAt: new Date(),
+  };
+  campaign.lastSendReport = report;
+  campaign.batchLog = [...(campaign.batchLog || []), report];
+  campaign.progress = { inProgress: false };
+  await campaign.save();
+
+  emitProgress(campaign._id, {
+    type: "batch-done",
+    report,
+    status: campaign.status,
+    counts: campaign.counts,
+  });
 
   res.json({ campaign });
 }
