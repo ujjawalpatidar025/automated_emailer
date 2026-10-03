@@ -180,7 +180,16 @@ export async function updateCampaign(req, res) {
       1,
       Math.floor(Number(schedule.count ?? campaign.schedule?.count ?? 50))
     );
-    campaign.schedule.enabled = !!schedule.enabled;
+    const nowEnabled = !!schedule.enabled;
+    // Changing the time, or re-enabling a paused schedule, means the user wants
+    // it to fire at the (new) time today — without this, `lastRunDate` from an
+    // earlier run today (at the old time, or before it was paused) would keep
+    // blocking today's send until midnight IST, per fireScheduledSend's
+    // once-per-day guard.
+    if (time !== campaign.schedule.time || (nowEnabled && !campaign.schedule.enabled)) {
+      campaign.schedule.lastRunDate = null;
+    }
+    campaign.schedule.enabled = nowEnabled;
     campaign.schedule.time = time;
     campaign.schedule.count = count;
   }
