@@ -18,6 +18,7 @@ import {
   Users,
   Pause,
   Play,
+  Upload,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -100,6 +101,8 @@ export default function CampaignDetail({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const resumeInputRef = useRef(null);
 
   // Live "what's sending right now" — fed by Server-Sent Events.
   const [live, setLive] = useState({ inProgress: false });
@@ -223,6 +226,23 @@ export default function CampaignDetail({
       toast.error(err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResumeChange(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow picking the same filename again later
+    if (!file) return;
+    setUploadingResume(true);
+    try {
+      const { campaign: updated } = await api.replaceResume(campaignId, file);
+      setCampaign(updated);
+      toast.success(`Resume ${campaign.resume?.originalName ? "replaced" : "attached"}`);
+      onChanged?.();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setUploadingResume(false);
     }
   }
 
@@ -607,12 +627,33 @@ export default function CampaignDetail({
                 {campaign.body}
               </pre>
 
-              {campaign.resume?.originalName && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Paperclip className="size-4" />
-                  {campaign.resume.originalName}
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Paperclip className="size-4" />
+                {campaign.resume?.originalName || (
+                  <span className="italic">No resume attached</span>
+                )}
+                <input
+                  ref={resumeInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  className="hidden"
+                  onChange={handleResumeChange}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  disabled={uploadingResume}
+                  onClick={() => resumeInputRef.current?.click()}
+                >
+                  {uploadingResume ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Upload className="size-3" />
+                  )}
+                  {campaign.resume?.originalName ? "Replace" : "Attach"}
+                </Button>
+              </div>
 
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

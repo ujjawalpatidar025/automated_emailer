@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { Campaign } from "../models/Campaign.js";
 import { User } from "../models/User.js";
 import { decryptSecret } from "../utils/crypto.js";
@@ -6,6 +5,7 @@ import { parseRecipientsCsv } from "../services/csvService.js";
 import { PICK_MODES, orderedPending, runBatch } from "../services/sendService.js";
 import { subscribeProgress } from "../services/progressBus.js";
 import { syncCampaignSchedule, removeCampaignSchedule } from "../scheduler.js";
+import { uploadResume, deleteResume } from "../services/cloudinary.js";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -58,7 +58,7 @@ export async function createCampaign(req, res) {
 
   let parsed;
   try {
-    parsed = parseRecipientsCsv(csvFile.path);
+    parsed = parseRecipientsCsv(csvFile.buffer.toString("utf8"));
   } catch (err) {
     return res.status(400).json({ error: `Could not parse CSV: ${err.message}` });
   }
@@ -68,20 +68,25 @@ export async function createCampaign(req, res) {
       .json({ error: "No valid email addresses found in the CSV" });
   }
 
+  let resume;
+  if (resumeFile) {
+    const { url, publicId } = await uploadResume(resumeFile.buffer, resumeFile.originalname);
+    resume = {
+      url,
+      publicId,
+      originalName: resumeFile.originalname,
+      mimeType: resumeFile.mimetype,
+      size: resumeFile.size,
+    };
+  }
+
   const campaign = await Campaign.create({
     user: req.userId,
     name,
     subject,
     body,
     isHtml: isHtml === "true" || isHtml === true,
-    resume: resumeFile
-      ? {
-          path: resumeFile.path,
-          originalName: resumeFile.originalname,
-          mimeType: resumeFile.mimetype,
-          size: resumeFile.size,
-        }
-      : undefined,
+    resume,
     recipients: parsed.recipients.map((r) => ({
       email: r.email,
       name: r.name,
@@ -94,9 +99,6 @@ export async function createCampaign(req, res) {
   });
 
   syncCampaignSchedule(campaign); // registers the cron job now, if scheduled mode was chosen
-
-  // the raw CSV upload is no longer needed
-  fs.promises.unlink(csvFile.path).catch(() => {});
 
   res.status(201).json({
     campaign,
@@ -204,10 +206,47 @@ export async function deleteCampaign(req, res) {
   const campaign = await Campaign.findOneAndDelete({ _id: req.params.id, user: req.userId });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
   removeCampaignSchedule(campaign._id);
-  if (campaign.resume?.path) {
-    fs.promises.unlink(campaign.resume.path).catch(() => {});
+  if (campaign.resume?.publicId) {
+    deleteResume(campaign.resume.publicId).catch(() => {});
   }
   res.json({ ok: true });
+}
+
+// PUT /api/campaigns/:id/resume  (multipart/form-data, field "resume")
+// Uploads a new resume and swaps it in, replacing whatever was attached
+// before (or adding one for the first time). The old Cloudinary asset, if
+// any, is deleted after the new one is safely saved on the campaign.
+export async function replaceResume(req, res) {
+  const campaign = await Campaign.findOne({ _id: req.params.id, user: req.userId });
+  if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+  if (campaign.status === "sending") {
+    return res
+      .status(409)
+      .json({ error: "Can't edit a campaign while it is sending" });
+  }
+
+  const resumeFile = req.files?.resume?.[0];
+  if (!resumeFile) {
+    return res.status(400).json({ error: "A resume file is required" });
+  }
+
+  const { url, publicId } = await uploadResume(resumeFile.buffer, resumeFile.originalname);
+  const previousPublicId = campaign.resume?.publicId;
+
+  campaign.resume = {
+    url,
+    publicId,
+    originalName: resumeFile.originalname,
+    mimeType: resumeFile.mimetype,
+    size: resumeFile.size,
+  };
+  await campaign.save();
+
+  if (previousPublicId) {
+    deleteResume(previousPublicId).catch(() => {});
+  }
+
+  res.json({ campaign });
 }
 
 // POST /api/campaigns/:id/send   body: { count }

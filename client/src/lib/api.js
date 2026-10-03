@@ -93,6 +93,12 @@ export const api = {
 
   deleteCampaign: (id) => request(`/campaigns/${id}`, { method: "DELETE" }),
 
+  replaceResume: (id, file) => {
+    const fd = new FormData();
+    fd.append("resume", file);
+    return request(`/campaigns/${id}/resume`, { method: "PUT", body: fd });
+  },
+
   sendBatch: (id, count) =>
     request(`/campaigns/${id}/send`, {
       method: "POST",

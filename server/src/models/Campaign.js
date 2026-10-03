@@ -75,7 +75,8 @@ const campaignSchema = new mongoose.Schema(
     isHtml: { type: Boolean, default: false },
 
     resume: {
-      path: String,
+      url: String, // Cloudinary secure_url — nodemailer attaches straight from it
+      publicId: String, // Cloudinary public_id, needed to delete/replace the asset
       originalName: String,
       mimeType: String,
       size: Number,

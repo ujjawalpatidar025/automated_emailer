@@ -1,33 +1,11 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import multer from "multer";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Vercel's filesystem is read-only outside of /tmp — trying to mkdir under
-// the deployed bundle throws at import time and takes down every route, not
-// just uploads. Use the OS temp dir there instead.
-//
-// Note this only really works on a normal long-running process (local dev,
-// Fly.io, Render): on Vercel, /tmp is ephemeral *per invocation*, so a resume
-// uploaded while creating a campaign may not exist by the time a later
-// "send" request (quite possibly a different, freshly cold-started instance)
-// tries to attach it. See README's "Deploying" section.
-export const UPLOAD_DIR = process.env.VERCEL
-  ? path.join(os.tmpdir(), "automator-email-uploads")
-  : path.resolve(__dirname, "../../uploads");
-
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const safe = file.originalname.replace(/[^\w.\-]+/g, "_");
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}-${safe}`);
-  },
-});
+// Both the resume (uploaded to Cloudinary) and the CSV (parsed once, then
+// discarded) only ever need the raw bytes for the lifetime of one request —
+// memory storage avoids touching disk at all, which also sidesteps Vercel's
+// read-only filesystem (only /tmp is writable there, and it isn't shared
+// across invocations) without needing any environment-specific branching.
+const storage = multer.memoryStorage();
 
 function fileFilter(_req, file, cb) {
   if (file.fieldname === "csv") {

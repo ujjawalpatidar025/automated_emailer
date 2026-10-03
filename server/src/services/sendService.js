@@ -112,8 +112,8 @@ export async function runBatch(
   }
 
   const delay = Number(process.env.SEND_DELAY_MS || 2000);
-  const attachment = campaign.resume?.path
-    ? { path: campaign.resume.path, originalName: campaign.resume.originalName }
+  const attachment = campaign.resume?.url
+    ? { path: campaign.resume.url, originalName: campaign.resume.originalName }
     : null;
 
   let sent = 0;

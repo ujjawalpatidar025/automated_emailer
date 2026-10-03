@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import { parse } from "csv-parse/sync";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,8 +29,8 @@ function pick(row, candidates) {
  * Any column that is not the email/name is preserved in `fields` so the
  * email body can reference it as {{ColumnName}}.
  */
-export function parseRecipientsCsv(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8").replace(/^﻿/, "");
+export function parseRecipientsCsv(csvText) {
+  const raw = csvText.replace(/^﻿/, "");
 
   // First pass: assume there is a header row.
   let rows = parse(raw, {
