@@ -63,8 +63,10 @@ Fill in `server/.env`:
 | --- | --- |
 | `MONGO_URI` | MongoDB connection string, database name included in the path |
 | `JWT_SECRET` / `CREDENTIAL_ENCRYPTION_KEY` | leave blank — generated automatically on first boot and saved back to this file |
-| `SEND_DELAY_MS` | pause between each email in a batch (default 2000) |
 | `MAX_BATCH_SIZE` | server-side ceiling per send/retry request (default 200) |
+
+The gap between each individual email is a per-campaign setting now
+(`sendDelaySec`, 10-300s, editable from the campaign page), not an env var.
 
 That's the whole backend config — **no global Gmail credentials**. Each user
 supplies their own Gmail address + App Password when they register (Google
@@ -231,9 +233,9 @@ What this project does for deliverability:
   `text/html`** parts (spam filters distrust HTML-only mail).
 - **`List-Unsubscribe` + `List-Unsubscribe-Post` headers** on every message
   (required by Gmail/Yahoo bulk-sender rules and a positive inbox signal).
-- **Throttling** — one email at a time with `SEND_DELAY_MS` between them, sent
-  in **small batches you control**, and the whole run **stops on the first
-  failure** rather than plowing through a broken list.
+- **Throttling** — one email at a time with a per-campaign gap (`sendDelaySec`,
+  10-300s) between them, sent in **small batches you control**, and the whole
+  run **stops on the first failure** rather than plowing through a broken list.
 - **De-duplication and basic validation** of the CSV before anything is queued.
 
 What's still on the sender (Google enforces this since Nov 2025 — failing mail
@@ -417,11 +419,12 @@ name/company, use a fallback so the copy still reads naturally:
 
 ## Notes & limitations
 
-- Sending is **synchronous** within a request: a batch of 50 with a 2s delay
-  takes ~100s to return. Keep batches modest, or move sending to a
+- Sending is **synchronous** within a request: a batch of 50 with a 10s delay
+  takes ~500s to return — comfortably past Vercel's 60s function timeout.
+  Keep batches small on a serverless deploy, or move sending to a
   queue/worker for higher volume.
-- Uploaded resumes live in `server/uploads/` and are deleted with the campaign
-  (not currently scoped per-user on disk — fine for a small deployment).
+- Resumes are stored on Cloudinary (`server/src/services/cloudinary.js`),
+  deleted when the campaign is deleted or the resume is replaced.
 - **Scheduling requires the backend to be running** at the scheduled time —
   if the process is down when a slot passes, that day's send is skipped, not
   queued for later.

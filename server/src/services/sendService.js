@@ -9,6 +9,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 //   offset -> skip the first `pickOffset` rows of the sheet, then go in order
 export const PICK_MODES = ["start", "end", "offset"];
 
+// Gap between each individual email in a batch, in seconds.
+export const SEND_DELAY_MIN_SEC = 10;
+export const SEND_DELAY_MAX_SEC = 300;
+
+export function clampSendDelaySec(value) {
+  return Math.min(
+    SEND_DELAY_MAX_SEC,
+    Math.max(SEND_DELAY_MIN_SEC, Math.floor(Number(value) || SEND_DELAY_MIN_SEC))
+  );
+}
+
 /** Pending recipients for the next batch, ordered per the campaign's pick mode. */
 export function orderedPending(campaign) {
   const mode = PICK_MODES.includes(campaign.pickFrom) ? campaign.pickFrom : "start";
@@ -111,7 +122,7 @@ export async function runBatch(
     });
   }
 
-  const delay = Number(process.env.SEND_DELAY_MS || 2000);
+  const delay = clampSendDelaySec(campaign.sendDelaySec) * 1000;
   const attachment = campaign.resume?.url
     ? { path: campaign.resume.url, originalName: campaign.resume.originalName }
     : null;

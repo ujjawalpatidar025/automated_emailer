@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload, Send, Clock, ListOrdered } from "lucide-react";
+import { Loader2, Upload, Send, Clock, ListOrdered, Timer } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ const initialForm = {
   body: "",
   pickFrom: "start",
   pickOffset: 0,
+  sendDelaySec: 10,
   mode: "manual", // "manual" | "scheduled" — scheduled is the only way a cron job gets created
   scheduleTime: "09:00",
   scheduleCount: 50,
@@ -45,6 +46,10 @@ export default function CampaignForm({ onCreated }) {
     if (!form.name || !form.subject || !form.body) {
       return toast.error("Name, subject and body are required");
     }
+    const delaySec = Number(form.sendDelaySec);
+    if (!Number.isInteger(delaySec) || delaySec < 10 || delaySec > 300) {
+      return toast.error("Gap between emails must be a whole number between 10 and 300 seconds");
+    }
 
     const fd = new FormData();
     fd.append("name", form.name);
@@ -52,6 +57,7 @@ export default function CampaignForm({ onCreated }) {
     fd.append("body", form.body);
     fd.append("pickFrom", form.pickFrom);
     fd.append("pickOffset", String(form.pickOffset || 0));
+    fd.append("sendDelaySec", String(form.sendDelaySec || 10));
     if (form.mode === "scheduled") {
       fd.append("scheduleEnabled", "true");
       fd.append("scheduleTime", form.scheduleTime);
@@ -268,6 +274,28 @@ export default function CampaignForm({ onCreated }) {
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="grid gap-2.5 rounded-lg border bg-muted/30 p-3.5">
+            <Label
+              htmlFor="sendDelaySec"
+              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              <Timer className="size-3.5" /> Gap between emails
+            </Label>
+            <Input
+              id="sendDelaySec"
+              type="number"
+              min={10}
+              max={300}
+              value={form.sendDelaySec}
+              onChange={set("sendDelaySec")}
+              className="w-full sm:w-32"
+            />
+            <p className="text-xs text-muted-foreground">
+              Seconds to wait between each email in a batch — between 10 and
+              300. Changeable later too.
+            </p>
           </div>
 
           <Button type="submit" disabled={submitting} className="justify-self-start">

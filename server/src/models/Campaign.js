@@ -92,6 +92,9 @@ const campaignSchema = new mongoose.Schema(
 
     pickFrom: { type: String, enum: ["start", "end", "offset"], default: "start" },
     pickOffset: { type: Number, default: 0 },
+    // Gap between each individual email in a batch, in seconds. Clamped
+    // 10-300 at the controller; mirrored here as a hard backstop.
+    sendDelaySec: { type: Number, default: 10, min: 10, max: 300 },
 
     schedule: { type: scheduleSchema, default: () => ({}) },
     progress: { type: progressSchema, default: () => ({ inProgress: false }) },
