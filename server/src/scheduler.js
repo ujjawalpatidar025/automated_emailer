@@ -47,13 +47,27 @@ function cronExprFor(time) {
 }
 
 async function fireScheduledSend(campaignId) {
+  console.log(`[scheduler] fireScheduledSend(${campaignId}) invoked`);
+
   const campaign = await Campaign.findById(campaignId);
-  if (!campaign) return removeCampaignSchedule(campaignId); // deleted since the job was registered
-  if (!campaign.schedule?.enabled) return; // turned off since the job fired (race is harmless)
-  if (campaign.status === "sending") return; // already busy elsewhere
+  if (!campaign) {
+    console.log(`[scheduler] ${campaignId}: skipped — campaign no longer exists`);
+    return removeCampaignSchedule(campaignId); // deleted since the job was registered
+  }
+  if (!campaign.schedule?.enabled) {
+    console.log(`[scheduler] ${campaignId}: skipped — schedule disabled`);
+    return; // turned off since the job fired (race is harmless)
+  }
+  if (campaign.status === "sending") {
+    console.log(`[scheduler] ${campaignId}: skipped — already sending`);
+    return; // already busy elsewhere
+  }
 
   const today = todayStr();
-  if (campaign.schedule.lastRunDate === today) return; // already ran today (e.g. re-registered mid-day on restart)
+  if (campaign.schedule.lastRunDate === today) {
+    console.log(`[scheduler] ${campaignId}: skipped — already ran today (lastRunDate=${campaign.schedule.lastRunDate})`);
+    return; // already ran today (e.g. re-registered mid-day on restart)
+  }
 
   const maxBatch = Number(process.env.MAX_BATCH_SIZE || 200);
   const count = Math.min(Math.max(1, Math.floor(Number(campaign.schedule.count) || 1)), maxBatch);
@@ -63,6 +77,7 @@ async function fireScheduledSend(campaignId) {
   await campaign.save();
 
   const list = orderedPending(campaign).slice(0, count);
+  console.log(`[scheduler] ${campaignId}: due, time=${campaign.schedule.time}, batchSize=${count}, pendingFound=${list.length}`);
   if (list.length === 0) {
     campaign.schedule.lastResult = "Ran, but there were no pending recipients to send.";
     await campaign.save();
@@ -148,12 +163,19 @@ export function activeJobCount() {
 export async function runDueSchedules() {
   const { dateStr, minutes: nowMinutes, label } = nowInIST();
   const campaigns = await Campaign.find({ "schedule.enabled": true });
+  console.log(
+    `[scheduler] tick at ${label}: ${campaigns.length} enabled schedule(s) — ` +
+      campaigns
+        .map((c) => `${c._id}(time=${c.schedule.time},lastRunDate=${c.schedule.lastRunDate})`)
+        .join(", ")
+  );
   const due = campaigns.filter(
     (c) =>
       TIME_RE.test(c.schedule.time) &&
       c.schedule.lastRunDate !== dateStr &&
       timeToMinutes(c.schedule.time) <= nowMinutes
   );
+  console.log(`[scheduler] tick at ${label}: ${due.length} due — ${due.map((c) => String(c._id)).join(", ")}`);
   for (const c of due) await fireScheduledSend(String(c._id));
   return { checkedAt: label, ran: due.map((c) => String(c._id)) };
 }
